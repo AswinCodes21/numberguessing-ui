@@ -12,6 +12,7 @@ import PlayerSetupScreen from './components/PlayerSetupScreen';
 import GameScreenComp from './components/GameScreen';
 import WinScreen from './components/WinScreen';
 import ChatPanel, { ChatMessage } from './components/ChatPanel';
+import GameLoader from './components/GameLoader';
 
 const ROOM_STORAGE_KEY = 'numberguess_room';
 
@@ -50,9 +51,13 @@ const App: React.FC = () => {
 
   const [isServerOnline, setIsServerOnline] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showInitialLoader, setShowInitialLoader] = useState(true);
   const playerRoleRef = useRef<PlayerRole>('NONE');
   const reconnectAttemptedRef = useRef(false);
-  
+
+  const MIN_LOADER_MS = 1200;
+  const MAX_LOADER_MS = 10000;
+
   // Keep ref in sync with state
   useEffect(() => {
     playerRoleRef.current = gameState.playerRole;
@@ -67,6 +72,26 @@ const App: React.FC = () => {
     }, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  // Initial game-style loader: show until server connected (with min/max time), then fade into app
+  useEffect(() => {
+    if (!showInitialLoader) return;
+    const startedAt = Date.now();
+    const check = () => {
+      const elapsed = Date.now() - startedAt;
+      if (isServerOnline && elapsed >= MIN_LOADER_MS) {
+        setShowInitialLoader(false);
+        return;
+      }
+      if (elapsed >= MAX_LOADER_MS) {
+        setShowInitialLoader(false);
+        return;
+      }
+      setTimeout(check, 200);
+    };
+    const t = setTimeout(check, 200);
+    return () => clearTimeout(t);
+  }, [showInitialLoader, isServerOnline]);
 
   // After refresh: reconnect to room when server is online and we were in a room
   useEffect(() => {
@@ -781,31 +806,34 @@ const App: React.FC = () => {
       case 'ROOM_SETUP': return <RoomSetup onConfirm={handleRoomAction} onBack={toModeSelection} />;
       case 'DIFFICULTY_SETUP': return <SetupScreen onSelect={selectDigits} onBack={toModeSelection} />;
       case 'RECONNECTING': return (
-        <div className="p-20 text-center flex flex-col items-center">
-          <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4">Reconnecting</h2>
-          <p className="text-slate-500 font-medium">Room: <span className="text-indigo-600 font-bold">{gameState.roomCode}</span></p>
-          <p className="text-slate-400 text-sm mt-4">Rejoining as {gameState.playerRole}...</p>
-          <button onClick={reset} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Cancel</button>
-        </div>
+        <GameLoader
+          fullScreen={false}
+          compact
+          status="Joining room..."
+          subtext={`Room ${gameState.roomCode} · Rejoining as ${gameState.playerRole}`}
+          showCancel
+          onCancel={reset}
+        />
       );
       case 'WAITING_FOR_OPPONENT': return (
-        <div className="p-20 text-center flex flex-col items-center">
-          <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4">Room Created</h2>
-          <p className="text-slate-500 font-medium">Room Code: <span className="text-indigo-600 font-bold">{gameState.roomCode}</span></p>
-          <p className="text-slate-400 text-sm mt-4">Waiting for an opponent to join...</p>
-          <button onClick={reset} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Cancel</button>
-        </div>
+        <GameLoader
+          fullScreen={false}
+          compact
+          status="Waiting for players..."
+          subtext={`Room ${gameState.roomCode} · Share the code so someone can join`}
+          showCancel
+          onCancel={reset}
+        />
       );
       case 'WAITING_FOR_HOST': return (
-        <div className="p-20 text-center flex flex-col items-center">
-          <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4">Joined Room</h2>
-          <p className="text-slate-500 font-medium">Room Code: <span className="text-indigo-600 font-bold">{gameState.roomCode}</span></p>
-          <p className="text-slate-400 text-sm mt-4">Waiting for the Host to choose the number of digits. You will then set your secret.</p>
-          <button onClick={reset} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Leave Lobby</button>
-        </div>
+        <GameLoader
+          fullScreen={false}
+          compact
+          status="Waiting for the host..."
+          subtext={`Room ${gameState.roomCode} · Host will choose digits, then you set your secret`}
+          showCancel
+          onCancel={reset}
+        />
       );
       case 'PLAYER_SECRET_SETUP': return <PlayerSetupScreen digitCount={gameState.digitCount} onConfirm={finalizeSecrets} onBack={() => setGameState(p => ({ ...p, screen: gameState.playerRole === 'HOST' ? 'DIFFICULTY_SETUP' : 'ROOM_SETUP' }))} />;
       case 'GAME': return (
@@ -830,7 +858,13 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 relative">
+      {showInitialLoader && (
+        <GameLoader
+          status="Connecting to server..."
+          subtext="Digit Duel is getting ready..."
+        />
+      )}
+      <div className={`w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 relative transition-opacity duration-500 ${showInitialLoader ? 'opacity-0' : 'opacity-100'}`}>
         {renderScreen()}
       </div>
       <div className="mt-8 text-slate-400 text-xs font-bold uppercase tracking-widest flex flex-col items-center gap-2">
