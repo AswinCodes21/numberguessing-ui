@@ -37,12 +37,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart }) => {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-green-50 p-4 rounded-xl border border-green-100">
             <div className="text-2xl mb-1">🟢</div>
-            <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Number correct-place correct</div>
+            <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Correct Number - Correct Place</div>
             <div className="text-xs text-green-600">Right digit, right spot</div>
           </div>
           <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
             <div className="text-2xl mb-1">🟡</div>
-            <div className="text-xs font-bold text-amber-700 uppercase tracking-wider">number-correct</div>
+            <div className="text-xs font-bold text-amber-700 uppercase tracking-wider">Correct-Number</div>
             <div className="text-xs text-amber-600">Right digit, wrong spot</div>
           </div>
         </div>
