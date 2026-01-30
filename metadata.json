@@ -1,0 +1,5 @@
+{
+  "name": "NumberGuessing-UI",
+  "description": "A sleek, responsive Bulls and Cows style number guessing game by Viluthugal Production. Challenge your logic by guessing a secret 3 or 4 digit number with real-time feedback.",
+  "requestFramePermissions": []
+}
