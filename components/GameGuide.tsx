@@ -132,7 +132,7 @@ const GameGuide: React.FC<GameGuideProps> = ({ compact = true }) => {
           <ul className="text-sm text-indigo-900 space-y-1">
             <li>• Start with a diverse set of digits (e.g., 1, 2, 3) to test positions</li>
             <li>• Track which digits are ruled out to narrow your search</li>
-            <li>• Use Bulls and Cows feedback to logically deduce the answer</li>
+            <li>• Use Green and Yellow indicator to logically deduce the answer</li>
             <li>• Be strategic with your guesses—every guess counts!</li>
           </ul>
         </div>
