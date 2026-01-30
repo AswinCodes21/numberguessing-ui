@@ -47,7 +47,7 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   const [error, setError] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Requirement 1: Disable guess input when it is not the player’s turn
+  // Guess input disabled unless it's our turn (restored from GameState after refresh/reconnect; also updated by TurnChanged)
   const isMyTurn = state.currentTurn === 'SELF' && state.gameStatus === 'PLAYING' && !state.isPendingResult;
   const opponentLabel = state.gameMode === 'AI' ? 'Computer' : 'Opponent';
 

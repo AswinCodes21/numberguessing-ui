@@ -13,8 +13,10 @@ import GameScreenComp from './components/GameScreen';
 import WinScreen from './components/WinScreen';
 import ChatPanel, { ChatMessage } from './components/ChatPanel';
 
-const App: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState>({
+const ROOM_STORAGE_KEY = 'numberguess_room';
+
+function getInitialGameState(): GameState {
+  const defaultState: GameState = {
     screen: 'HOME',
     gameMode: 'AI',
     gameStatus: 'WAITING',
@@ -28,11 +30,28 @@ const App: React.FC = () => {
     currentTurn: 'SELF',
     winner: null,
     isPendingResult: false,
-  });
+  };
+  try {
+    const saved = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ROOM_STORAGE_KEY) : null;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const roomCode = parsed.roomCode ?? parsed.RoomCode;
+      const role = parsed.role ?? parsed.Role ?? parsed.playerRole;
+      if (roomCode && (role === 'HOST' || role === 'GUEST')) {
+        return { ...defaultState, gameMode: 'ONLINE', playerRole: role, roomCode, screen: 'RECONNECTING' };
+      }
+    }
+  } catch (_) {}
+  return defaultState;
+}
+
+const App: React.FC = () => {
+  const [gameState, setGameState] = useState<GameState>(getInitialGameState);
 
   const [isServerOnline, setIsServerOnline] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const playerRoleRef = useRef<PlayerRole>('NONE');
+  const reconnectAttemptedRef = useRef(false);
   
   // Keep ref in sync with state
   useEffect(() => {
@@ -48,6 +67,47 @@ const App: React.FC = () => {
     }, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  // After refresh: reconnect to room when server is online and we were in a room
+  useEffect(() => {
+    if (gameState.screen !== 'RECONNECTING') {
+      reconnectAttemptedRef.current = false;
+      return;
+    }
+    if (!isServerOnline || !gameState.roomCode || (gameState.playerRole !== 'HOST' && gameState.playerRole !== 'GUEST')) return;
+
+    const conn = signalRService.getConnection();
+    if (conn.state !== signalR.HubConnectionState.Connected) return;
+    if (reconnectAttemptedRef.current) return;
+    reconnectAttemptedRef.current = true;
+
+    (async () => {
+      try {
+        if (gameState.playerRole === 'HOST') {
+          try {
+            await conn.invoke('CreateRoom', gameState.roomCode);
+            // RoomCreated event will set screen to WAITING_FOR_OPPONENT
+          } catch (createErr: any) {
+            const msg = createErr?.message || String(createErr);
+            // Room already exists = we're reconnecting; re-join the existing room as host
+            if (msg.includes('Room already exists') || msg.includes('already exists')) {
+              await conn.invoke('JoinRoom', gameState.roomCode);
+              // Screen will be set by GameState event from backend
+            } else {
+              throw createErr;
+            }
+          }
+        } else {
+          await conn.invoke('JoinRoom', gameState.roomCode);
+          // Screen will be set by GameState event from backend
+        }
+      } catch (err) {
+        console.error('[SignalR: ERROR] Reconnect failed:', err);
+        reconnectAttemptedRef.current = false;
+        alert(`Could not rejoin room: ${err instanceof Error ? err.message : 'Unknown error'}. Try joining again.`);
+      }
+    })();
+  }, [isServerOnline, gameState.screen, gameState.roomCode, gameState.playerRole]);
 
   const applyTurnResult = useCallback((guess: string, bulls: number, cows: number, turn: Turn) => {
     setGameState(prev => {
@@ -118,6 +178,7 @@ const App: React.FC = () => {
     });
 
     // Game started: server tells which player goes first (PLAYER1|PLAYER2)
+    // Do NOT clear guess history here — after refresh, history comes from GameState only.
     connection.on("GameStarted", (currentTurn: "PLAYER1" | "PLAYER2") => {
       console.log(`[SignalR: RECEIVE] GameStarted: ${currentTurn}`);
       setGameState(p => {
@@ -129,8 +190,7 @@ const App: React.FC = () => {
           gameStatus: 'PLAYING',
           screen: 'GAME',
           currentTurn: turnIsSelf ? 'SELF' : 'OPPONENT',
-          selfGuessHistory: [],
-          opponentGuessHistory: [],
+          // Keep existing guess history (empty on fresh start; restored from GameState after reconnect)
         };
       });
     });
@@ -345,6 +405,73 @@ const App: React.FC = () => {
     connection.on("VoiceMessage", handleVoiceMessage);
     connection.on("receivevoicemessage", handleVoiceMessage); // Also listen for lowercase version
 
+    // GameState: source of truth after JoinRoom (including reconnect). Backend sends after every successful JoinRoom.
+    const handleGameState = (data: any) => {
+      const d = data ?? {};
+      const digitCount = (d.digitCount ?? d.DigitCount ?? 3) as 3 | 4;
+      const currentTurnServer = d.currentTurn ?? d.CurrentTurn ?? 'PLAYER1';
+      const isGameStarted = d.isGameStarted ?? d.IsGameStarted ?? false;
+      const isGameOver = d.isGameOver ?? d.IsGameOver ?? false;
+      // Backend may send yourGuesses/opponentGuesses or yourGuessHistory/opponentGuessHistory
+      const yourHistory = d.yourGuesses ?? d.yourGuessHistory ?? d.selfGuessHistory ?? d.myGuessHistory ?? d.YourGuesses ?? d.YourGuessHistory ?? d.SelfGuessHistory ?? [];
+      const oppHistory = d.opponentGuesses ?? d.opponentGuessHistory ?? d.OpponentGuesses ?? d.OpponentGuessHistory ?? [];
+      const winnerServer = d.winner ?? d.Winner ?? null;
+
+      const toGuessResult = (item: any): GuessResult => ({
+        guess: item.guess ?? item.Guess ?? '',
+        bulls: item.bulls ?? item.Bulls ?? 0,
+        cows: item.cows ?? item.Cows ?? 0,
+        timestamp: item.timestamp ?? item.Timestamp ?? Date.now(),
+      });
+      const selfGuessHistory = Array.isArray(yourHistory) ? yourHistory.map(toGuessResult) : [];
+      const opponentGuessHistory = Array.isArray(oppHistory) ? oppHistory.map(toGuessResult) : [];
+
+      setGameState(p => {
+        const amHost = p.playerRole === 'HOST';
+        const selfIsPlayer1 = amHost;
+        const currentTurn: Turn =
+          (currentTurnServer === 'PLAYER1' && selfIsPlayer1) || (currentTurnServer === 'PLAYER2' && !selfIsPlayer1)
+            ? 'SELF'
+            : 'OPPONENT';
+        const winner: Turn | null =
+          winnerServer === 'PLAYER1' && selfIsPlayer1
+            ? 'SELF'
+            : winnerServer === 'PLAYER2' && !selfIsPlayer1
+              ? 'SELF'
+              : winnerServer === 'PLAYER1' && !selfIsPlayer1
+                ? 'OPPONENT'
+                : winnerServer === 'PLAYER2' && selfIsPlayer1
+                  ? 'OPPONENT'
+                  : null;
+
+        let screen: GameScreen = p.screen;
+        if (isGameOver) {
+          screen = 'WIN';
+        } else if (isGameStarted) {
+          screen = 'GAME';
+        } else {
+          screen = p.playerRole === 'HOST' ? 'WAITING_FOR_OPPONENT' : 'WAITING_FOR_HOST';
+        }
+
+        const gameStatus = isGameOver ? 'FINISHED' : isGameStarted ? 'PLAYING' : 'WAITING';
+
+        return {
+          ...p,
+          digitCount,
+          currentTurn,
+          selfGuessHistory,
+          opponentGuessHistory,
+          screen,
+          gameStatus,
+          winner: isGameOver ? winner : null,
+          isPendingResult: false,
+        };
+      });
+      console.log('[SignalR: RECEIVE] GameState applied:', { digitCount, isGameStarted, isGameOver, screen: isGameOver ? 'WIN' : isGameStarted ? 'GAME' : 'LOBBY' });
+    };
+
+    connection.on('GameState', handleGameState);
+
     return () => {
       connection.off("RoomCreated");
       connection.off("OpponentJoined");
@@ -358,6 +485,7 @@ const App: React.FC = () => {
       connection.off("receivechatmessage");
       connection.off("VoiceMessage");
       connection.off("receivevoicemessage");
+      connection.off("GameState");
     };
   }, [applyTurnResult]);
 
@@ -385,13 +513,14 @@ const App: React.FC = () => {
           console.log(`[SignalR: SEND] CreateRoom: Code=${cleanCode}, Role=HOST`);
           await signalRService.getConnection().invoke("CreateRoom", cleanCode);
           console.log(`[SignalR: SUCCESS] Room created: ${cleanCode}`);
-          // Don't set screen here - wait for RoomCreated event from server
           setGameState(p => ({ ...p, playerRole: role, roomCode: cleanCode }));
+          sessionStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify({ roomCode: cleanCode, role: 'HOST' }));
         } else {
           console.log(`[SignalR: SEND] JoinRoom: Code=${cleanCode}, Role=GUEST`);
           await signalRService.getConnection().invoke("JoinRoom", cleanCode);
           console.log(`[SignalR: SUCCESS] Joined room: ${cleanCode}`);
           setGameState(p => ({ ...p, playerRole: role, roomCode: cleanCode, screen: 'WAITING_FOR_HOST' }));
+          sessionStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify({ roomCode: cleanCode, role: 'GUEST' }));
         }
       } catch (err) {
         console.error("[SignalR: ERROR] Room action failed:", err);
@@ -467,7 +596,13 @@ const App: React.FC = () => {
       } catch (err) {
         console.error("[SignalR: ERROR] MakeGuess failed:", err);
         setGameState(p => ({ ...p, isPendingResult: false }));
-        alert(`Guess rejected: ${err instanceof Error ? err.message : 'Server error'}`);
+        const msg = err instanceof Error ? err.message : 'Server error';
+        // "Not your turn" usually means our UI state is stale (e.g. other player rejoined and we didn't get GameState)
+        if (msg.includes('Not your turn') || msg.includes('not your turn')) {
+          alert('It\'s not your turn. The game state may have updated (e.g. after the other player reconnected). Please wait for your turn.');
+        } else {
+          alert(`Guess rejected: ${msg}`);
+        }
       }
     }
   };
@@ -520,6 +655,18 @@ const App: React.FC = () => {
       return;
     }
     
+    // Optimistic UI: show sender's voice note immediately (receiver gets it via server)
+    const tempId = `voice-temp-${Date.now()}`;
+    const audioUrl = URL.createObjectURL(audioBlob);
+    setChatMessages(prev => [...prev, {
+      id: tempId,
+      sender: 'SELF',
+      message: '',
+      timestamp: Date.now(),
+      type: 'voice',
+      audioUrl,
+    }]);
+    
     try {
       console.log("[SignalR: SEND] SendVoiceMessage: Size=", audioBlob.size, "Type=", audioBlob.type);
       
@@ -535,10 +682,14 @@ const App: React.FC = () => {
             await new Promise(resolve => setTimeout(resolve, 500));
           } catch (err) {
             console.error('[SignalR: ERROR] Failed to reconnect:', err);
+            setChatMessages(prev => prev.filter(m => m.id !== tempId));
+            URL.revokeObjectURL(audioUrl);
             alert('Connection lost. Please wait for reconnection and try again.');
             return;
           }
         } else {
+          setChatMessages(prev => prev.filter(m => m.id !== tempId));
+          URL.revokeObjectURL(audioUrl);
           alert('Connection not ready. Please wait a moment and try again.');
           return;
         }
@@ -555,6 +706,8 @@ const App: React.FC = () => {
           
           // Check base64 size
           if (base64Audio.length > MAX_AUDIO_SIZE * 1.4) { // Base64 is ~33% larger
+            setChatMessages(prev => prev.filter(m => m.id !== tempId));
+            URL.revokeObjectURL(audioUrl);
             alert('Voice message is too large after encoding. Please record a shorter message.');
             return;
           }
@@ -564,6 +717,8 @@ const App: React.FC = () => {
           // Ensure connection is still active
           const conn = signalRService.getConnection();
           if (conn.state !== signalR.HubConnectionState.Connected) {
+            setChatMessages(prev => prev.filter(m => m.id !== tempId));
+            URL.revokeObjectURL(audioUrl);
             alert('Connection lost. Please wait for reconnection and try again.');
             return;
           }
@@ -573,6 +728,8 @@ const App: React.FC = () => {
           console.log("[SignalR: SUCCESS] Voice message sent");
         } catch (err: any) {
           console.error("[SignalR: ERROR] SendVoiceMessage failed:", err);
+          setChatMessages(prev => prev.filter(m => m.id !== tempId));
+          URL.revokeObjectURL(audioUrl);
           const errorMsg = err?.message || 'Unknown error';
           if (errorMsg.includes('Connection') || errorMsg.includes('disconnected')) {
             alert('Connection lost while sending voice message. Please try again.');
@@ -583,16 +740,21 @@ const App: React.FC = () => {
       };
       reader.onerror = (err) => {
         console.error("[SignalR: ERROR] FileReader error:", err);
+        setChatMessages(prev => prev.filter(m => m.id !== tempId));
+        URL.revokeObjectURL(audioUrl);
         alert('Failed to process voice message. Please try again.');
       };
       reader.readAsDataURL(audioBlob);
     } catch (err: any) {
       console.error("[SignalR: ERROR] SendVoiceMessage failed:", err);
+      setChatMessages(prev => prev.filter(m => m.id !== tempId));
+      URL.revokeObjectURL(audioUrl);
       alert(`Failed to send voice message: ${err?.message || 'Unknown error'}`);
     }
   };
 
   const reset = () => {
+    sessionStorage.removeItem(ROOM_STORAGE_KEY);
     setGameState(p => ({ 
       ...p, 
       screen: 'HOME', 
@@ -601,6 +763,7 @@ const App: React.FC = () => {
       selfGuessHistory: [],
       opponentGuessHistory: [],
       roomCode: '',
+      playerRole: 'NONE',
       isPendingResult: false 
     }));
     setChatMessages([]); // Clear chat messages on reset
@@ -617,6 +780,15 @@ const App: React.FC = () => {
       case 'MODE_SELECTION': return <ModeSelection onSelect={selectMode} onBack={reset} />;
       case 'ROOM_SETUP': return <RoomSetup onConfirm={handleRoomAction} onBack={toModeSelection} />;
       case 'DIFFICULTY_SETUP': return <SetupScreen onSelect={selectDigits} onBack={toModeSelection} />;
+      case 'RECONNECTING': return (
+        <div className="p-20 text-center flex flex-col items-center">
+          <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
+          <h2 className="text-3xl font-black text-slate-900 mb-4">Reconnecting</h2>
+          <p className="text-slate-500 font-medium">Room: <span className="text-indigo-600 font-bold">{gameState.roomCode}</span></p>
+          <p className="text-slate-400 text-sm mt-4">Rejoining as {gameState.playerRole}...</p>
+          <button onClick={reset} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Cancel</button>
+        </div>
+      );
       case 'WAITING_FOR_OPPONENT': return (
         <div className="p-20 text-center flex flex-col items-center">
           <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>

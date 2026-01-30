@@ -1,7 +1,7 @@
 
 import * as signalR from "@microsoft/signalr";
 
-const HUB_URL = "https://localhost:7263/gameHub";
+const HUB_URL = "https://number-guessing-backend-thhc.onrender.com/gameHub";
 
 class SignalRService {
   private connection: signalR.HubConnection | null = null;

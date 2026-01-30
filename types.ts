@@ -1,6 +1,6 @@
 
 export type GameMode = 'AI' | 'ONLINE';
-export type GameScreen = 'HOME' | 'MODE_SELECTION' | 'ROOM_SETUP' | 'DIFFICULTY_SETUP' | 'PLAYER_SECRET_SETUP' | 'GAME' | 'WIN' | 'WAITING_FOR_HOST' | 'WAITING_FOR_OPPONENT';
+export type GameScreen = 'HOME' | 'MODE_SELECTION' | 'ROOM_SETUP' | 'DIFFICULTY_SETUP' | 'PLAYER_SECRET_SETUP' | 'GAME' | 'WIN' | 'WAITING_FOR_HOST' | 'WAITING_FOR_OPPONENT' | 'RECONNECTING';
 export type GameStatus = 'WAITING' | 'READY_TO_START' | 'PLAYING' | 'FINISHED';
 export type PlayerRole = 'HOST' | 'GUEST' | 'NONE';
 
