@@ -288,7 +288,7 @@ const App: React.FC = () => {
       // Check if data is an object (backend sends object format)
       if (typeof data === 'object' && data !== null) {
         sender = data.sender || data.Sender || data.role || data.Role || '';
-        audioData = data.audioData || data.audio || data.data || '';
+        audioData = data.audioData || data.audio || data.data || data.AudioData || '';
       } else {
         // Backend sends separate parameters (sender, audioData)
         sender = data || '';
@@ -303,8 +303,9 @@ const App: React.FC = () => {
       }
       
       try {
-        // Convert base64 to blob
-        const audioBlob = await fetch(`data:audio/webm;base64,${audioData}`).then(r => r.blob());
+        // Convert base64 to blob (support webm or mp4 if backend sends mimeType)
+        const mime = (typeof data === 'object' && data !== null && data.mimeType) ? data.mimeType : 'audio/webm';
+        const audioBlob = await fetch(`data:${mime};base64,${audioData}`).then(r => r.blob());
         const audioUrl = URL.createObjectURL(audioBlob);
         
         const isSelf = sender && (
@@ -400,17 +401,13 @@ const App: React.FC = () => {
   };
 
   const selectDigits = async (count: 3 | 4) => {
-    // Backend doesn't expose a SetDifficulty method in the contract.
-    // Keep difficulty locally and advance to secret setup.
-    // If HOST, notify server about difficulty (if needed) and proceed to secret setup
+    // Only HOST can set digit count in online mode; server broadcasts DifficultySet to GUEST
     if (gameState.gameMode === 'ONLINE' && gameState.playerRole === 'HOST') {
       try {
-        // Optionally notify server about difficulty selection
-        // await signalRService.getConnection().invoke("SetDifficulty", gameState.roomCode, count);
+        await signalRService.getConnection().invoke("SetDifficulty", gameState.roomCode, count);
         setGameState(p => ({ ...p, digitCount: count, screen: 'PLAYER_SECRET_SETUP' }));
       } catch (err) {
         console.error("[SignalR: ERROR] SetDifficulty failed:", err);
-        // Continue anyway - difficulty is stored locally
         setGameState(p => ({ ...p, digitCount: count, screen: 'PLAYER_SECRET_SETUP' }));
       }
     } else {
@@ -571,7 +568,8 @@ const App: React.FC = () => {
             return;
           }
           
-          await conn.invoke("SendVoiceMessage", gameState.roomCode, base64Audio);
+          // Send roomCode, sender (HOST/GUEST), and base64Audio so backend can broadcast to the other player with sender
+          await conn.invoke("SendVoiceMessage", gameState.roomCode, gameState.playerRole, base64Audio);
           console.log("[SignalR: SUCCESS] Voice message sent");
         } catch (err: any) {
           console.error("[SignalR: ERROR] SendVoiceMessage failed:", err);
@@ -633,16 +631,8 @@ const App: React.FC = () => {
           <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
           <h2 className="text-3xl font-black text-slate-900 mb-4">Joined Room</h2>
           <p className="text-slate-500 font-medium">Room Code: <span className="text-indigo-600 font-bold">{gameState.roomCode}</span></p>
-          <p className="text-slate-400 text-sm mt-4">Waiting for the Host to set the game difficulty...</p>
-          {gameState.gameStatus === 'READY_TO_START' && (
-            <button 
-              onClick={() => setGameState(p => ({ ...p, digitCount: 3, screen: 'PLAYER_SECRET_SETUP' }))}
-              className="mt-8 px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors"
-            >
-              Proceed to Set Secret (Default: 3 digits)
-            </button>
-          )}
-          <button onClick={reset} className="mt-4 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Leave Lobby</button>
+          <p className="text-slate-400 text-sm mt-4">Waiting for the Host to choose the number of digits. You will then set your secret.</p>
+          <button onClick={reset} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Leave Lobby</button>
         </div>
       );
       case 'PLAYER_SECRET_SETUP': return <PlayerSetupScreen digitCount={gameState.digitCount} onConfirm={finalizeSecrets} onBack={() => setGameState(p => ({ ...p, screen: gameState.playerRole === 'HOST' ? 'DIFFICULTY_SETUP' : 'ROOM_SETUP' }))} />;
