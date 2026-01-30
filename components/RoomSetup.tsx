@@ -72,7 +72,7 @@ const RoomSetup: React.FC<Props> = ({ onConfirm, onBack }) => {
       {!isConnected && (
         <div className="mt-6 p-4 bg-rose-50 rounded-xl border border-rose-100">
           <p className="text-rose-600 text-xs font-bold leading-relaxed">
-            Unable to reach backend. Make sure your C# app is running on port 7263 and CORS is enabled.
+            Unable to reach backend. Make sure the backend is running at number-guessing-backend-thhc.onrender.com and CORS is enabled.
           </p>
         </div>
       )}
