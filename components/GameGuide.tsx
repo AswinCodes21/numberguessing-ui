@@ -34,8 +34,8 @@ const GameGuide: React.FC<GameGuideProps> = ({ compact = true }) => {
 
       {/* Expandable Content */}
       <div
-        className={`space-y-4 transition-all duration-300 overflow-hidden ${
-          isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+        className={`space-y-4 transition-all duration-300 overflow-y-auto ${
+          isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
         }`}
       >
         {/* Game Overview */}
