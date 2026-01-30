@@ -1,5 +1,6 @@
 
 import React from 'react';
+import GameGuide from './GameGuide';
 
 interface HomeScreenProps {
   onStart: () => void;
@@ -46,6 +47,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart }) => {
             <div className="text-xs text-amber-600">Right digit, wrong spot</div>
           </div>
         </div>
+      </div>
+
+      {/* Game Guide Section */}
+      <div className="w-full mt-8 pt-6 border-t border-gray-200">
+        <GameGuide compact={true} />
       </div>
     </div>
   );
