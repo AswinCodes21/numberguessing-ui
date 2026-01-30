@@ -14,7 +14,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart }) => {
       </div>
       <div>
         <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
-          Number Guessing Game
+          Digit Duel 
         </h1>
         <p className="text-indigo-600 font-bold text-xs uppercase tracking-[0.2em] mt-2">
           Viluthugal Production
