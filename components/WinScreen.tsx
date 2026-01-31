@@ -1,5 +1,5 @@
 import React from 'react';
-import { Turn } from '../types';
+import { Turn, PlayerRole } from '../types';
 
 interface Props {
   winner: Turn | null;
@@ -9,6 +9,7 @@ interface Props {
   opponentAttempts: number;
   onPlayAgain: () => void;
   onHome: () => void;
+  playerRole?: PlayerRole;
 }
 
 const WinScreen: React.FC<Props> = ({
@@ -19,8 +20,10 @@ const WinScreen: React.FC<Props> = ({
   opponentAttempts,
   onPlayAgain,
   onHome,
+  playerRole = 'NONE',
 }) => {
   const isWinner = winner === 'SELF';
+  const isHost = playerRole === 'HOST';
 
   return (
     <div className="p-8 md:p-12 text-center flex flex-col items-center win-screen">
@@ -85,9 +88,10 @@ const WinScreen: React.FC<Props> = ({
       <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
         <button
           onClick={onPlayAgain}
-          className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all"
+          disabled={!isHost}
+          className={`flex-1 py-4 font-black rounded-2xl shadow-lg transition-all ${isHost ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
         >
-          Play again
+          {isHost ? 'Play again' : 'Waiting for host'}
         </button>
         <button
           onClick={onHome}
