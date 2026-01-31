@@ -441,6 +441,9 @@ const App: React.FC = () => {
       const yourHistory = d.yourGuesses ?? d.yourGuessHistory ?? d.selfGuessHistory ?? d.myGuessHistory ?? d.YourGuesses ?? d.YourGuessHistory ?? d.SelfGuessHistory ?? [];
       const oppHistory = d.opponentGuesses ?? d.opponentGuessHistory ?? d.OpponentGuesses ?? d.OpponentGuessHistory ?? [];
       const winnerServer = d.winner ?? d.Winner ?? null;
+      // Secrets: for win screen and for reconnecting players (backend may send at game over or in GameState)
+      const payloadYourSecret = d.yourSecret ?? d.playerSecret ?? d.YourSecret ?? d.PlayerSecret ?? '';
+      const payloadOpponentSecret = d.opponentSecret ?? d.OpponentSecret ?? '';
 
       const toGuessResult = (item: any): GuessResult => ({
         guess: item.guess ?? item.Guess ?? '',
@@ -479,6 +482,9 @@ const App: React.FC = () => {
         }
 
         const gameStatus = isGameOver ? 'FINISHED' : isGameStarted ? 'PLAYING' : 'WAITING';
+        // Preserve or set secrets: keep existing if we have it; use payload when provided (e.g. game over or reconnect)
+        const playerSecret = payloadYourSecret || p.playerSecret;
+        const opponentSecret = payloadOpponentSecret || p.opponentSecret;
 
         return {
           ...p,
@@ -486,6 +492,8 @@ const App: React.FC = () => {
           currentTurn,
           selfGuessHistory,
           opponentGuessHistory,
+          playerSecret,
+          opponentSecret,
           screen,
           gameStatus,
           winner: isGameOver ? winner : null,
