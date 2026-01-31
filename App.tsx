@@ -938,7 +938,17 @@ const App: React.FC = () => {
           )}
         </>
       );
-      case 'WIN': return <WinScreen winner={gameState.winner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} playerRole={gameState.playerRole} />;
+      case 'WIN': {
+        // If server didn't provide a mapped winner, try to infer from latest guess results as a fallback
+        let derivedWinner = gameState.winner;
+        if (!derivedWinner) {
+          const topSelf = gameState.selfGuessHistory[0];
+          const topOpp = gameState.opponentGuessHistory[0];
+          if (topSelf && topSelf.bulls === gameState.digitCount) derivedWinner = 'SELF';
+          else if (topOpp && topOpp.bulls === gameState.digitCount) derivedWinner = 'OPPONENT';
+        }
+        return <WinScreen winner={derivedWinner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} playerRole={gameState.playerRole} />;
+      }
       default: return <HomeScreen onStart={toModeSelection} />;
     }
   };
