@@ -944,7 +944,7 @@ const App: React.FC = () => {
           )}
         </>
       );
-      case 'WIN': return <WinScreen winner={gameState.winner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} />;
+      case 'WIN': return <WinScreen winner={gameState.winner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} playerRole={gameState.playerRole} />;
       default: return <HomeScreen onStart={toModeSelection} />;
     }
   };
