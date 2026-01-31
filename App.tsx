@@ -442,8 +442,24 @@ const App: React.FC = () => {
       const oppHistory = d.opponentGuesses ?? d.opponentGuessHistory ?? d.OpponentGuesses ?? d.OpponentGuessHistory ?? [];
       const winnerServer = d.winner ?? d.Winner ?? null;
       // Secrets: for win screen and for reconnecting players (backend may send at game over or in GameState)
-      const payloadYourSecret = d.yourSecret ?? d.playerSecret ?? d.YourSecret ?? d.PlayerSecret ?? '';
-      const payloadOpponentSecret = d.opponentSecret ?? d.OpponentSecret ?? '';
+      // Be defensive about field names and map based on player role (HOST = PLAYER1) so clients don't accidentally
+      // read the other player's secret. Prefer explicit player1/player2 fields when available.
+      const p1Secret = d.player1Secret ?? d.playerOneSecret ?? d.Player1Secret ?? d.PlayerOneSecret ?? null;
+      const p2Secret = d.player2Secret ?? d.playerTwoSecret ?? d.Player2Secret ?? d.PlayerTwoSecret ?? null;
+      const payloadYourSecret = ((): string | null => {
+        // If explicit player1/player2 fields exist, map according to whether this client is PLAYER1
+        if (p1Secret !== null || p2Secret !== null) {
+          return p1Secret ?? p2Secret ?? '';
+        }
+        // Fallbacks: some servers send 'yourSecret' and 'opponentSecret'
+        if (d.yourSecret !== undefined || d.opponentSecret !== undefined) {
+          return d.yourSecret ?? null;
+        }
+        // Older payloads may include a generic 'playerSecret' which is ambiguous; do not assume it belongs to "you"
+        // unless the server also provides a role field. As a safe fallback, return null so we don't overwrite local value.
+        return null;
+      })();
+      const payloadOpponentSecret = d.opponentSecret ?? null;
 
       const toGuessResult = (item: any): GuessResult => ({
         guess: item.guess ?? item.Guess ?? '',
@@ -483,8 +499,23 @@ const App: React.FC = () => {
 
         const gameStatus = isGameOver ? 'FINISHED' : isGameStarted ? 'PLAYING' : 'WAITING';
         // Preserve or set secrets: keep existing if we have it; use payload when provided (e.g. game over or reconnect)
-        const playerSecret = payloadYourSecret || p.playerSecret;
-        const opponentSecret = payloadOpponentSecret || p.opponentSecret;
+        // Map explicitly when server provided player1/player2 secrets
+        let playerSecret = p.playerSecret;
+        let opponentSecret = p.opponentSecret;
+        if (p1Secret !== null || p2Secret !== null) {
+          // Map based on whether this client was PLAYER1 (host) or PLAYER2 (guest)
+          if (selfIsPlayer1) {
+            playerSecret = p1Secret ?? playerSecret;
+            opponentSecret = p2Secret ?? opponentSecret;
+          } else {
+            playerSecret = p2Secret ?? playerSecret;
+            opponentSecret = p1Secret ?? opponentSecret;
+          }
+        } else {
+          // If server sent 'yourSecret' and 'opponentSecret', use them (these are intended to be role-aware)
+          if (payloadYourSecret !== null) playerSecret = payloadYourSecret || playerSecret;
+          if (payloadOpponentSecret !== null) opponentSecret = payloadOpponentSecret || opponentSecret;
+        }
 
         return {
           ...p,
@@ -505,6 +536,23 @@ const App: React.FC = () => {
 
     connection.on('GameState', handleGameState);
 
+    // Game restart: server requests both players to reset secrets and start a fresh round
+    connection.on('GameRestarted', (data: any) => {
+      console.log('[SignalR: RECEIVE] GameRestarted', data);
+      // Clear local secrets and histories; server is authoritative and will send a GameState shortly
+      setGameState(p => ({
+        ...p,
+        playerSecret: '',
+        opponentSecret: '',
+        selfGuessHistory: [],
+        opponentGuessHistory: [],
+        winner: null,
+        gameStatus: 'WAITING',
+        screen: 'PLAYER_SECRET_SETUP',
+        isPendingResult: false,
+      }));
+    });
+
     return () => {
       connection.off("RoomCreated");
       connection.off("OpponentJoined");
@@ -519,8 +567,45 @@ const App: React.FC = () => {
       connection.off("VoiceMessage");
       connection.off("receivevoicemessage");
       connection.off("GameState");
+      connection.off("GameRestarted");
     };
   }, [applyTurnResult]);
+
+  const handlePlayAgain = async () => {
+    if (gameState.gameMode !== 'ONLINE' || !gameState.roomCode) {
+      // For local/AI mode, simply reset to secret setup
+      setGameState(p => ({
+        ...p,
+        playerSecret: '',
+        opponentSecret: '',
+        selfGuessHistory: [],
+        opponentGuessHistory: [],
+        winner: null,
+        screen: 'PLAYER_SECRET_SETUP',
+        gameStatus: 'WAITING',
+      }));
+      return;
+    }
+
+    try {
+      console.log('[SignalR: SEND] RestartGame', gameState.roomCode);
+      await signalRService.getConnection().invoke('RestartGame', gameState.roomCode);
+      // Optimistically clear local state; server will broadcast GameRestarted/GameState soon
+      setGameState(p => ({
+        ...p,
+        playerSecret: '',
+        opponentSecret: '',
+        selfGuessHistory: [],
+        opponentGuessHistory: [],
+        winner: null,
+        screen: 'PLAYER_SECRET_SETUP',
+        gameStatus: 'WAITING',
+      }));
+    } catch (err) {
+      console.error('[SignalR: ERROR] RestartGame failed', err);
+      alert('Failed to request a restart. Please try again.');
+    }
+  };
 
   const toModeSelection = () => setGameState(p => ({ ...p, screen: 'MODE_SELECTION' }));
   
@@ -859,7 +944,7 @@ const App: React.FC = () => {
           )}
         </>
       );
-      case 'WIN': return <WinScreen winner={gameState.winner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={() => selectDigits(gameState.digitCount)} onHome={reset} />;
+      case 'WIN': return <WinScreen winner={gameState.winner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} />;
       default: return <HomeScreen onStart={toModeSelection} />;
     }
   };
