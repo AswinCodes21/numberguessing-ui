@@ -127,21 +127,22 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
     setDigits(new Array(state.digitCount).fill(''));
   };
 
-  // Requirement 3: Game Status Handling for "WAITING"
-  if (state.gameStatus === 'WAITING' && state.gameMode === 'ONLINE') {
-    return (
-      <div className="p-20 text-center flex flex-col items-center">
-        <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-8"></div>
-        <h2 className="text-3xl font-black text-slate-900 mb-4">Waiting for Opponent</h2>
-        <p className="text-slate-500 font-medium">Room Code: <span className="text-indigo-600 font-bold">{state.roomCode}</span></p>
-        <p className="text-slate-400 text-sm mt-2 italic">The game will start once both players set their secret codes.</p>
-        <button onClick={onQuit} className="mt-12 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Cancel Duel</button>
-      </div>
-    );
-  }
+  // If game is waiting (online) we show a subtle overlay but keep the main UI available
+  const showWaitingOverlay = state.gameStatus === 'WAITING' && state.gameMode === 'ONLINE';
 
   return (
     <div className="flex flex-col relative">
+      {showWaitingOverlay && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/60 backdrop-blur-sm p-8">
+          <div className="text-center">
+            <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-6 mx-auto"></div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">Waiting for Opponent</h2>
+            <p className="text-slate-500 font-medium">Room Code: <span className="text-indigo-600 font-bold">{state.roomCode}</span></p>
+            <p className="text-slate-400 text-sm mt-2 italic">The game will start once both players set their secret codes.</p>
+            <button onClick={onQuit} className="mt-6 text-slate-400 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors">Cancel Duel</button>
+          </div>
+        </div>
+      )}
       {/* Your number — subtle reference, top-left; only your secret, never opponent's. Toggle show/hide (default hidden). */}
       {state.playerSecret && (
         <div
