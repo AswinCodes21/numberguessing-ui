@@ -433,6 +433,7 @@ const App: React.FC = () => {
     // GameState: source of truth after JoinRoom (including reconnect). Backend sends after every successful JoinRoom.
     const handleGameState = (data: any) => {
       const d = data ?? {};
+      console.warn('[SignalR: RECEIVE] raw GameState payload:', d);
       const digitCount = (d.digitCount ?? d.DigitCount ?? 3) as 3 | 4;
       const currentTurnServer = d.currentTurn ?? d.CurrentTurn ?? 'PLAYER1';
       const isGameStarted = d.isGameStarted ?? d.IsGameStarted ?? false;
@@ -464,6 +465,7 @@ const App: React.FC = () => {
       const selfGuessHistory = Array.isArray(yourHistory) ? yourHistory.map(toGuessResult) : [];
       const opponentGuessHistory = Array.isArray(oppHistory) ? oppHistory.map(toGuessResult) : [];
 
+      // Decide winner: prefer explicit server winner; if absent and game is over, infer from provided histories
       setGameState(p => {
         const amHost = p.playerRole === 'HOST';
         const selfIsPlayer1 = amHost;
@@ -471,16 +473,32 @@ const App: React.FC = () => {
           (currentTurnServer === 'PLAYER1' && selfIsPlayer1) || (currentTurnServer === 'PLAYER2' && !selfIsPlayer1)
             ? 'SELF'
             : 'OPPONENT';
-        const winner: Turn | null =
-          winnerServer === 'PLAYER1' && selfIsPlayer1
-            ? 'SELF'
-            : winnerServer === 'PLAYER2' && !selfIsPlayer1
+
+        // Map server-provided winner when available
+        let winner: Turn | null = null;
+        if (winnerServer) {
+          winner =
+            winnerServer === 'PLAYER1' && selfIsPlayer1
               ? 'SELF'
-              : winnerServer === 'PLAYER1' && !selfIsPlayer1
-                ? 'OPPONENT'
-                : winnerServer === 'PLAYER2' && selfIsPlayer1
+              : winnerServer === 'PLAYER2' && !selfIsPlayer1
+                ? 'SELF'
+                : winnerServer === 'PLAYER1' && !selfIsPlayer1
                   ? 'OPPONENT'
-                  : null;
+                  : winnerServer === 'PLAYER2' && selfIsPlayer1
+                    ? 'OPPONENT'
+                    : null;
+        }
+
+        // If server didn't send a winner but the game is over, try to infer from the guess histories included in this payload
+        if (!winner && isGameOver) {
+          const recentSelf = selfGuessHistory[0];
+          const recentOpp = opponentGuessHistory[0];
+          const selfWon = !!recentSelf && recentSelf.bulls === digitCount;
+          const oppWon = !!recentOpp && recentOpp.bulls === digitCount;
+          if (selfWon && !oppWon) winner = 'SELF';
+          else if (oppWon && !selfWon) winner = 'OPPONENT';
+          // if both or none, leave null (ambiguous)
+        }
 
         let screen: GameScreen = p.screen;
         if (isGameOver) {
@@ -510,6 +528,8 @@ const App: React.FC = () => {
           if (payloadYourSecretRaw !== null) playerSecret = payloadYourSecretRaw || playerSecret;
           if (payloadOpponentSecret !== null) opponentSecret = payloadOpponentSecret || opponentSecret;
         }
+
+        console.warn('[GameState] applied winner mapping:', { winnerServer, inferredWinner: winner, selfGuessHistory, opponentGuessHistory });
 
         return {
           ...p,
@@ -672,6 +692,7 @@ const App: React.FC = () => {
     } else {
       try {
         console.log(`[SignalR: SEND] SubmitSecret: Room=${gameState.roomCode}`);
+        console.warn('[SignalR: SEND] SubmitSecret payload:', { room: gameState.roomCode, secret });
         await signalRService.getConnection().invoke("SubmitSecret", gameState.roomCode, secret);
         console.log("[SignalR: SUCCESS] Secret accepted by server.");
 
