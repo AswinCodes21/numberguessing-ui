@@ -52,6 +52,15 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   const secretBoxRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Debug: log secret visibility and role to help diagnose guest badge issues
+  useEffect(() => {
+    try {
+      console.debug('[GameScreen] playerRole=', state.playerRole, 'playerSecret=', state.playerSecret, 'opponentSecret=', state.opponentSecret);
+    } catch (e) {
+      /* ignore */
+    }
+  }, [state.playerRole, state.playerSecret, state.opponentSecret]);
+
   // Guess input disabled unless it's our turn (restored from GameState after refresh/reconnect; also updated by TurnChanged)
   const isMyTurn = state.currentTurn === 'SELF' && state.gameStatus === 'PLAYING' && !state.isPendingResult;
   const opponentLabel = state.gameMode === 'AI' ? 'Computer' : 'Opponent';
