@@ -45,6 +45,7 @@ const HistoryPanel: React.FC<{ title: string; history: GuessResult[]; icon: stri
 const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   const [digits, setDigits] = useState<string[]>(new Array(state.digitCount).fill(''));
   const [error, setError] = useState<string | null>(null);
+  const [secretVisible, setSecretVisible] = useState(false); // default hidden; toggle to reveal
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Guess input disabled unless it's our turn (restored from GameState after refresh/reconnect; also updated by TurnChanged)
@@ -93,7 +94,46 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col relative">
+      {/* Your number — subtle reference, top-left; only your secret, never opponent's. Toggle show/hide (default hidden). */}
+      {state.playerSecret && (
+        <div
+          className="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/90 backdrop-blur-sm border border-slate-600/50 shadow-lg"
+          title={secretVisible ? 'Your secret number (for reference)' : 'Click eye to reveal your number'}
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">
+              Your number
+            </p>
+            <p className="text-lg font-black font-mono tracking-wider tabular-nums min-w-[2.5rem]">
+              {secretVisible ? (
+                <span className="text-white">{state.playerSecret}</span>
+              ) : (
+                <span className="text-slate-500 select-none">{'•'.repeat(state.playerSecret.length)}</span>
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSecretVisible(prev => !prev)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            title={secretVisible ? 'Hide number' : 'Show number'}
+            aria-label={secretVisible ? 'Hide secret number' : 'Show secret number'}
+          >
+            {secretVisible ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.5 4.5 0 106.262 6.262M4 4l3 3m10 10l3 3" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Dynamic Header with Turn Indicator */}
       <div className={`px-8 py-6 flex items-center justify-between transition-all duration-700 ${isMyTurn ? 'bg-indigo-600' : 'bg-slate-900'}`}>
         <div className="flex items-center gap-5">
