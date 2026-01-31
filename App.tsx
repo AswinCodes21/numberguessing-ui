@@ -444,22 +444,16 @@ const App: React.FC = () => {
       // Secrets: for win screen and for reconnecting players (backend may send at game over or in GameState)
       // Be defensive about field names and map based on player role (HOST = PLAYER1) so clients don't accidentally
       // read the other player's secret. Prefer explicit player1/player2 fields when available.
-      const p1Secret = d.player1Secret ?? d.playerOneSecret ?? d.Player1Secret ?? d.PlayerOneSecret ?? null;
-      const p2Secret = d.player2Secret ?? d.playerTwoSecret ?? d.Player2Secret ?? d.PlayerTwoSecret ?? null;
-      const payloadYourSecret = ((): string | null => {
-        // If explicit player1/player2 fields exist, map according to whether this client is PLAYER1
-        if (p1Secret !== null || p2Secret !== null) {
-          return p1Secret ?? p2Secret ?? '';
-        }
-        // Fallbacks: some servers send 'yourSecret' and 'opponentSecret'
-        if (d.yourSecret !== undefined || d.opponentSecret !== undefined) {
-          return d.yourSecret ?? null;
-        }
-        // Older payloads may include a generic 'playerSecret' which is ambiguous; do not assume it belongs to "you"
-        // unless the server also provides a role field. As a safe fallback, return null so we don't overwrite local value.
-        return null;
-      })();
-      const payloadOpponentSecret = d.opponentSecret ?? null;
+      // Read server secrets but treat empty strings as "not provided" so we don't erase a local secret.
+      const rawP1 = d.player1Secret ?? d.playerOneSecret ?? d.Player1Secret ?? d.PlayerOneSecret;
+      const rawP2 = d.player2Secret ?? d.playerTwoSecret ?? d.Player2Secret ?? d.PlayerTwoSecret;
+      const p1Secret = typeof rawP1 === 'string' && rawP1.length > 0 ? rawP1 : null;
+      const p2Secret = typeof rawP2 === 'string' && rawP2.length > 0 ? rawP2 : null;
+
+      // Determine per-connection secret payloads; accept only non-empty strings
+      const rawYour = d.yourSecret ?? d.playerSecret ?? null;
+      const payloadYourSecretRaw = typeof rawYour === 'string' && rawYour.length > 0 ? rawYour : null;
+      const payloadOpponentSecret = (typeof d.opponentSecret === 'string' && d.opponentSecret.length > 0) ? d.opponentSecret : null;
 
       const toGuessResult = (item: any): GuessResult => ({
         guess: item.guess ?? item.Guess ?? '',
@@ -512,8 +506,8 @@ const App: React.FC = () => {
             opponentSecret = p1Secret ?? opponentSecret;
           }
         } else {
-          // If server sent 'yourSecret' and 'opponentSecret', use them (these are intended to be role-aware)
-          if (payloadYourSecret !== null) playerSecret = payloadYourSecret || playerSecret;
+          // If server sent 'yourSecret' / 'playerSecret' (per-connection) and 'opponentSecret', use them
+          if (payloadYourSecretRaw !== null) playerSecret = payloadYourSecretRaw || playerSecret;
           if (payloadOpponentSecret !== null) opponentSecret = payloadOpponentSecret || opponentSecret;
         }
 
