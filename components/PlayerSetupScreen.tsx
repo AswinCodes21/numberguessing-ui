@@ -46,6 +46,7 @@ const PlayerSetupScreen: React.FC<PlayerSetupScreenProps> = ({ digitCount, onCon
     
     setIsSubmitting(true);
     try {
+      console.warn('[PlayerSetup] submitting secret:', secret);
       await onConfirm(secret);
     } catch (err) {
       setError("Failed to communicate with server.");
