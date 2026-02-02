@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GameState, GuessResult } from '../types';
 import { validateGuess } from '../utils';
@@ -49,7 +48,11 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   const [dragPosition, setDragPosition] = useState({ x: 16, y: 16 }); // Store position in pixels
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [activeHistoryPanel, setActiveHistoryPanel] = useState(0); // 0 = My Guesses, 1 = Opponent's Guesses
+  const [swipeStart, setSwipeStart] = useState({ x: 0, y: 0 });
+  const [isSwipingHistory, setIsSwipingHistory] = useState(false);
   const secretBoxRef = useRef<HTMLDivElement>(null);
+  const historyCarouselRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Debug: log secret visibility and role to help diagnose guest badge issues
@@ -102,6 +105,36 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, dragOffset]);
+
+  // History carousel swipe handlers
+  const handleHistorySwipeStart = (e: React.TouchEvent | React.MouseEvent) => {
+    setIsSwipingHistory(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    setSwipeStart({ x: clientX, y: clientY });
+  };
+
+  const handleHistorySwipeEnd = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isSwipingHistory || !historyCarouselRef.current) return;
+
+    const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
+
+    const deltaX = clientX - swipeStart.x;
+    const deltaY = clientY - swipeStart.y;
+
+    // Only trigger swipe if mostly horizontal movement (ignore vertical scrolls)
+    // Reduced threshold from 50 to 30 for better mobile responsiveness
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
+      if (deltaX > 0 && activeHistoryPanel > 0) {
+        setActiveHistoryPanel(0);
+      } else if (deltaX < 0 && activeHistoryPanel < 1) {
+        setActiveHistoryPanel(1);
+      }
+    }
+
+    setIsSwipingHistory(false);
+  };
 
   const handleInputChange = (idx: number, val: string) => {
     if (!isMyTurn || (val && !/^\d$/.test(val))) return;
@@ -208,10 +241,66 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
         </button>
       </div>
 
-      {/* Requirement 2: Separate History Panels */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 bg-slate-50/50">
-        <HistoryPanel title="My Guesses" history={state.selfGuessHistory} icon="🎯" theme="indigo" />
-        <HistoryPanel title={`${opponentLabel}'s Guesses`} history={state.opponentGuessHistory} icon="🔮" theme="slate" />
+      {/* Swipeable History Carousel */}
+      <div className="bg-slate-50/50 px-8 pt-8 pb-8">
+        {/* Desktop: Side-by-side layout, Mobile: Carousel with swipe */}
+        <div className="hidden md:grid md:grid-cols-2 gap-6">
+          <HistoryPanel title="My Guesses" history={state.selfGuessHistory} icon="🎯" theme="indigo" />
+          <HistoryPanel title={`${opponentLabel}'s Guesses`} history={state.opponentGuessHistory} icon="🔮" theme="slate" />
+        </div>
+
+        {/* Mobile: Swipeable Carousel */}
+        <div className="md:hidden flex flex-col">
+          <div
+            ref={historyCarouselRef}
+            className="relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
+            onTouchStart={handleHistorySwipeStart}
+            onTouchEnd={handleHistorySwipeEnd}
+            onMouseDown={handleHistorySwipeStart}
+            onMouseUp={handleHistorySwipeEnd}
+            onMouseLeave={() => setIsSwipingHistory(false)}
+            style={{ touchAction: 'pan-y' }}
+          >
+            <div
+              className="flex transition-transform duration-300 ease-out"
+              style={{
+                transform: `translateX(-${activeHistoryPanel * 100}%)`,
+              }}
+            >
+              <div className="w-full flex-shrink-0 px-0">
+                <HistoryPanel title="My Guesses" history={state.selfGuessHistory} icon="🎯" theme="indigo" />
+              </div>
+              <div className="w-full flex-shrink-0 px-0">
+                <HistoryPanel title={`${opponentLabel}'s Guesses`} history={state.opponentGuessHistory} icon="🔮" theme="slate" />
+              </div>
+            </div>
+          </div>
+
+          {/* Swipe Indicator Dots - More Visible */}
+          <div className="flex gap-3 mt-6 justify-center">
+            <button
+              onClick={() => setActiveHistoryPanel(0)}
+              className={`transition-all duration-300 ${
+                activeHistoryPanel === 0 ? 'bg-indigo-600 w-8 h-3 rounded-full' : 'w-3 h-3 bg-slate-300 rounded-full hover:bg-slate-400'
+              }`}
+              aria-label="View My Guesses"
+              type="button"
+            />
+            <button
+              onClick={() => setActiveHistoryPanel(1)}
+              className={`transition-all duration-300 ${
+                activeHistoryPanel === 1 ? 'bg-indigo-600 w-8 h-3 rounded-full' : 'w-3 h-3 bg-slate-300 rounded-full hover:bg-slate-400'
+              }`}
+              aria-label={`View ${opponentLabel}'s Guesses`}
+              type="button"
+            />
+          </div>
+
+          {/* Mobile Hint Text */}
+          <p className="text-center text-[10px] text-slate-400 font-bold mt-3 uppercase tracking-wider">
+            Swipe left/right to switch panels
+          </p>
+        </div>
       </div>
 
       {/* Interaction Bar */}
