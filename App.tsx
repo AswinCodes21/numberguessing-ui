@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameScreen, GameState, Turn, GameMode, PlayerRole, GuessResult } from './types';
 import { calculateBullsAndCows, generateSmartAIGuess, generateUniqueSecret } from './utils';
@@ -13,6 +12,8 @@ import GameScreenComp from './components/GameScreen';
 import WinScreen from './components/WinScreen';
 import ChatPanel, { ChatMessage } from './components/ChatPanel';
 import GameLoader from './components/GameLoader';
+import SequentialGameLoader from './components/SequentialGameLoader';
+import Toast, { ToastMessage } from './components/Toast';
 
 const ROOM_STORAGE_KEY = 'numberguess_room';
 
@@ -52,11 +53,59 @@ const App: React.FC = () => {
   const [isServerOnline, setIsServerOnline] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showInitialLoader, setShowInitialLoader] = useState(true);
+  const [toastMessages, setToastMessages] = useState<ToastMessage[]>([]);
   const playerRoleRef = useRef<PlayerRole>('NONE');
   const reconnectAttemptedRef = useRef(false);
 
-  const MIN_LOADER_MS = 1200;
+  const MIN_LOADER_MS = 4800; // 6 messages × 800ms = 4800ms
   const MAX_LOADER_MS = 10000;
+
+  // Toast helper functions
+  const showToast = (type: ToastMessage['type'], title: string, message: string, duration?: number) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    const newToast: ToastMessage = { id, type, title, message, duration };
+    setToastMessages(prev => [...prev, newToast]);
+    return id;
+  };
+
+  const removeToast = (id: string) => {
+    setToastMessages(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Helper to simplify SignalR error messages
+  const simplifySignalRError = (error: any): string => {
+    if (!error) return 'An error occurred';
+    
+    const message = error?.message || String(error);
+    
+    // Extract user-friendly messages
+    if (message.includes('Room not found') || message.includes('room not found')) {
+      return 'Room not found';
+    }
+    if (message.includes('already exists') || message.includes('Room already exists')) {
+      return 'Room already exists';
+    }
+    if (message.includes('Room is full') || message.includes('room is full')) {
+      return 'Room is full';
+    }
+    if (message.includes('Not your turn') || message.includes('not your turn')) {
+      return 'Not your turn';
+    }
+    if (message.includes('Invalid guess') || message.includes('invalid guess')) {
+      return 'Invalid guess format';
+    }
+    if (message.includes('Connection') || message.includes('disconnected')) {
+      return 'Connection lost';
+    }
+    if (message.includes('timeout') || message.includes('Timeout')) {
+      return 'Request timeout';
+    }
+    
+    // Default: return first 80 chars of message, remove HubException prefix
+    let clean = message.replace(/^HubException:\s*/i, '').trim();
+    if (clean.length > 80) clean = clean.substring(0, 80) + '...';
+    return clean || 'An error occurred';
+  };
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -73,25 +122,8 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Initial game-style loader: show until server connected (with min/max time), then fade into app
-  useEffect(() => {
-    if (!showInitialLoader) return;
-    const startedAt = Date.now();
-    const check = () => {
-      const elapsed = Date.now() - startedAt;
-      if (isServerOnline && elapsed >= MIN_LOADER_MS) {
-        setShowInitialLoader(false);
-        return;
-      }
-      if (elapsed >= MAX_LOADER_MS) {
-        setShowInitialLoader(false);
-        return;
-      }
-      setTimeout(check, 200);
-    };
-    const t = setTimeout(check, 200);
-    return () => clearTimeout(t);
-  }, [showInitialLoader, isServerOnline]);
+  // Remove the old loader check - let SequentialGameLoader handle completion
+  // The loader will complete after all messages are shown, regardless of server status
 
   // After refresh: reconnect to room when server is online and we were in a room
   useEffect(() => {
@@ -129,7 +161,7 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('[SignalR: ERROR] Reconnect failed:', err);
         reconnectAttemptedRef.current = false;
-        alert(`Could not rejoin room: ${err instanceof Error ? err.message : 'Unknown error'}. Try joining again.`);
+        showToast('error', 'Reconnection Failed', `Could not rejoin room. Try joining again.`);
       }
     })();
   }, [isServerOnline, gameState.screen, gameState.roomCode, gameState.playerRole]);
@@ -156,32 +188,24 @@ const App: React.FC = () => {
   useEffect(() => {
     const connection = signalRService.getConnection();
 
-    // Room created (sent to the creator)
     connection.on("RoomCreated", () => {
       console.log(`[SignalR: RECEIVE] RoomCreated`);
       setGameState(p => ({ ...p, screen: 'WAITING_FOR_OPPONENT', gameStatus: 'WAITING' }));
     });
 
-    // Opponent joined into the room
     connection.on("OpponentJoined", () => {
       console.log(`[SignalR: RECEIVE] OpponentJoined`);
       setGameState(p => {
-        // If you're the HOST and opponent joined, move to difficulty setup
         if (p.playerRole === 'HOST') {
           return { ...p, screen: 'DIFFICULTY_SETUP', gameStatus: 'READY_TO_START' };
         }
-        // If you're the GUEST, wait for host to set difficulty
-        // The host will set difficulty, then both can set secrets
         return { ...p, gameStatus: 'READY_TO_START' };
       });
     });
 
-    // Listen for when difficulty is set (if server sends this event)
-    // If server doesn't send this, GUEST will proceed when HOST submits secret
     connection.on("DifficultySet", (digitCount: 3 | 4) => {
       console.log(`[SignalR: RECEIVE] DifficultySet: ${digitCount}`);
       setGameState(p => {
-        // GUEST receives difficulty and can now set their secret
         if (p.playerRole === 'GUEST') {
           return { ...p, digitCount, screen: 'PLAYER_SECRET_SETUP' };
         }
@@ -189,38 +213,31 @@ const App: React.FC = () => {
       });
     });
 
-    // Listen for when opponent submits secret (if server sends this event)
-    // This allows GUEST to know when HOST has submitted and they should also submit
     connection.on("OpponentSecretSubmitted", () => {
       console.log(`[SignalR: RECEIVE] OpponentSecretSubmitted`);
       setGameState(p => {
-        // If you're GUEST and haven't submitted yet, you can now submit
         if (p.playerRole === 'GUEST' && !p.playerSecret && p.screen === 'WAITING_FOR_HOST') {
-          return { ...p, screen: 'PLAYER_SECRET_SETUP', digitCount: 3 }; // Default to 3 digits
+          return { ...p, screen: 'PLAYER_SECRET_SETUP', digitCount: 3 };
         }
         return p;
       });
     });
 
-    // Game started: server tells which player goes first (PLAYER1|PLAYER2)
-    // Do NOT clear guess history here — after refresh, history comes from GameState only.
     connection.on("GameStarted", (currentTurn: "PLAYER1" | "PLAYER2") => {
       console.log(`[SignalR: RECEIVE] GameStarted: ${currentTurn}`);
       setGameState(p => {
         const amHost = p.playerRole === 'HOST';
-        const selfIsPlayer1 = amHost; // assume creator = PLAYER1
+        const selfIsPlayer1 = amHost;
         const turnIsSelf = (currentTurn === 'PLAYER1' && selfIsPlayer1) || (currentTurn === 'PLAYER2' && !selfIsPlayer1);
         return {
           ...p,
           gameStatus: 'PLAYING',
           screen: 'GAME',
           currentTurn: turnIsSelf ? 'SELF' : 'OPPONENT',
-          // Keep existing guess history (empty on fresh start; restored from GameState after reconnect)
         };
       });
     });
 
-    // Guess results: server forwards which player made the guess and the result
     connection.on("GuessResult", (player: "PLAYER1" | "PLAYER2", result: { guess: string, bulls: number, cows: number }) => {
       console.log(`[SignalR: RECEIVE] GuessResult: Player=${player}, Result=${JSON.stringify(result)}`);
       setGameState(p => {
@@ -267,44 +284,36 @@ const App: React.FC = () => {
       });
     });
 
-    // Chat message received - handle both PascalCase and lowercase method names
-    // Handle different formats: object, or (sender, message) parameters
+    // Chat message received
     const handleChatMessage = (data: any, messageParam?: string) => {
       let sender: string;
       let message: string;
       
-      // Check if data is an object (backend sends object format)
       if (typeof data === 'object' && data !== null) {
         sender = data.sender || data.Sender || data.role || data.Role || '';
         message = data.message || data.Message || data.text || data.Text || '';
       } else {
-        // Backend sends separate parameters (sender, message)
         sender = data || '';
         message = messageParam || '';
       }
       
       console.log(`[SignalR: RECEIVE] ChatMessage: sender=${sender}, message=${message}`, data);
       
-      // Only validate message, sender can be empty
       if (!message) {
         console.warn('Invalid chat message format: message is empty', { data, messageParam });
         return;
       }
       
-      // Determine if message is from self
       let isSelf = false;
       if (sender) {
         isSelf = sender === playerRoleRef.current || 
                  sender.toUpperCase() === playerRoleRef.current.toUpperCase();
       } else {
-        // If sender is empty, check if this message matches a recent optimistic message we sent
-        // This prevents duplicate messages when server echoes back our own message
         setChatMessages(prev => {
           const recentSelfMessage = prev
             .filter(m => m.sender === 'SELF')
             .sort((a, b) => b.timestamp - a.timestamp)[0];
           
-          // If message matches recent self message and it's within 5 seconds, skip it (already shown)
           if (recentSelfMessage && 
               recentSelfMessage.message === message && 
               Math.abs(recentSelfMessage.timestamp - Date.now()) < 5000) {
@@ -312,7 +321,6 @@ const App: React.FC = () => {
             return prev;
           }
           
-          // Otherwise, treat as opponent message
           const messageExists = prev.some(m => 
             m.message === message && 
             m.sender === 'OPPONENT' && 
@@ -334,11 +342,10 @@ const App: React.FC = () => {
           console.log('Adding chat message (empty sender, treating as opponent):', newMessage);
           return [...prev, newMessage];
         });
-        return; // Early return for empty sender case
+        return;
       }
       
       setChatMessages(prev => {
-        // Avoid duplicates by checking if message already exists
         const messageExists = prev.some(m => 
           m.message === message && 
           m.sender === (isSelf ? 'SELF' : 'OPPONENT') && 
@@ -363,19 +370,17 @@ const App: React.FC = () => {
     };
 
     connection.on("ChatMessage", handleChatMessage);
-    connection.on("receivechatmessage", handleChatMessage); // Also listen for lowercase version
+    connection.on("receivechatmessage", handleChatMessage);
 
-    // Voice message received - handle both object and parameter formats
+    // Voice message received
     const handleVoiceMessage = async (data: any, audioDataParam?: string) => {
       let sender: string;
       let audioData: string;
       
-      // Check if data is an object (backend sends object format)
       if (typeof data === 'object' && data !== null) {
         sender = data.sender || data.Sender || data.role || data.Role || '';
         audioData = data.audioData || data.audio || data.data || data.AudioData || '';
       } else {
-        // Backend sends separate parameters (sender, audioData)
         sender = data || '';
         audioData = audioDataParam || '';
       }
@@ -388,7 +393,6 @@ const App: React.FC = () => {
       }
       
       try {
-        // Convert base64 to blob (support webm or mp4 if backend sends mimeType)
         const mime = (typeof data === 'object' && data !== null && data.mimeType) ? data.mimeType : 'audio/webm';
         const audioBlob = await fetch(`data:${mime};base64,${audioData}`).then(r => r.blob());
         const audioUrl = URL.createObjectURL(audioBlob);
@@ -409,7 +413,6 @@ const App: React.FC = () => {
         
         console.log('Adding voice message to chat:', newMessage);
         setChatMessages(prev => {
-          // Avoid duplicates
           const messageExists = prev.some(m => 
             m.type === 'voice' && 
             m.sender === newMessage.sender && 
@@ -423,14 +426,14 @@ const App: React.FC = () => {
         });
       } catch (err) {
         console.error('Error processing voice message:', err);
-        alert('Failed to process received voice message.');
+        showToast('error', 'Voice Message Error', 'Failed to process received voice message.');
       }
     };
 
     connection.on("VoiceMessage", handleVoiceMessage);
-    connection.on("receivevoicemessage", handleVoiceMessage); // Also listen for lowercase version
+    connection.on("receivevoicemessage", handleVoiceMessage);
 
-    // GameState: source of truth after JoinRoom (including reconnect). Backend sends after every successful JoinRoom.
+    // GameState handler
     const handleGameState = (data: any) => {
       const d = data ?? {};
       console.warn('[SignalR: RECEIVE] raw GameState payload:', d);
@@ -438,20 +441,14 @@ const App: React.FC = () => {
       const currentTurnServer = d.currentTurn ?? d.CurrentTurn ?? 'PLAYER1';
       const isGameStarted = d.isGameStarted ?? d.IsGameStarted ?? false;
       const isGameOver = d.isGameOver ?? d.IsGameOver ?? false;
-      // Backend may send yourGuesses/opponentGuesses or yourGuessHistory/opponentGuessHistory
       const yourHistory = d.yourGuesses ?? d.yourGuessHistory ?? d.selfGuessHistory ?? d.myGuessHistory ?? d.YourGuesses ?? d.YourGuessHistory ?? d.SelfGuessHistory ?? [];
       const oppHistory = d.opponentGuesses ?? d.opponentGuessHistory ?? d.OpponentGuesses ?? d.OpponentGuessHistory ?? [];
       const winnerServer = d.winner ?? d.Winner ?? null;
-      // Secrets: for win screen and for reconnecting players (backend may send at game over or in GameState)
-      // Be defensive about field names and map based on player role (HOST = PLAYER1) so clients don't accidentally
-      // read the other player's secret. Prefer explicit player1/player2 fields when available.
-      // Read server secrets but treat empty strings as "not provided" so we don't erase a local secret.
       const rawP1 = d.player1Secret ?? d.playerOneSecret ?? d.Player1Secret ?? d.PlayerOneSecret;
       const rawP2 = d.player2Secret ?? d.playerTwoSecret ?? d.Player2Secret ?? d.PlayerTwoSecret;
       const p1Secret = typeof rawP1 === 'string' && rawP1.length > 0 ? rawP1 : null;
       const p2Secret = typeof rawP2 === 'string' && rawP2.length > 0 ? rawP2 : null;
 
-      // Determine per-connection secret payloads; accept only non-empty strings
       const rawYour = d.yourSecret ?? d.playerSecret ?? null;
       const payloadYourSecretRaw = typeof rawYour === 'string' && rawYour.length > 0 ? rawYour : null;
       const payloadOpponentSecret = (typeof d.opponentSecret === 'string' && d.opponentSecret.length > 0) ? d.opponentSecret : null;
@@ -465,7 +462,6 @@ const App: React.FC = () => {
       const selfGuessHistory = Array.isArray(yourHistory) ? yourHistory.map(toGuessResult) : [];
       const opponentGuessHistory = Array.isArray(oppHistory) ? oppHistory.map(toGuessResult) : [];
 
-      // Decide winner: prefer explicit server winner; if absent and game is over, infer from provided histories
       setGameState(p => {
         const amHost = p.playerRole === 'HOST';
         const selfIsPlayer1 = amHost;
@@ -474,7 +470,6 @@ const App: React.FC = () => {
             ? 'SELF'
             : 'OPPONENT';
 
-        // Map server-provided winner when available
         let winner: Turn | null = null;
         if (winnerServer) {
           winner =
@@ -489,7 +484,6 @@ const App: React.FC = () => {
                     : null;
         }
 
-        // If server didn't send a winner but the game is over, try to infer from the guess histories included in this payload
         if (!winner && isGameOver) {
           const recentSelf = selfGuessHistory[0];
           const recentOpp = opponentGuessHistory[0];
@@ -497,7 +491,6 @@ const App: React.FC = () => {
           const oppWon = !!recentOpp && recentOpp.bulls === digitCount;
           if (selfWon && !oppWon) winner = 'SELF';
           else if (oppWon && !selfWon) winner = 'OPPONENT';
-          // if both or none, leave null (ambiguous)
         }
 
         let screen: GameScreen = p.screen;
@@ -510,12 +503,9 @@ const App: React.FC = () => {
         }
 
         const gameStatus = isGameOver ? 'FINISHED' : isGameStarted ? 'PLAYING' : 'WAITING';
-        // Preserve or set secrets: keep existing if we have it; use payload when provided (e.g. game over or reconnect)
-        // Map explicitly when server provided player1/player2 secrets
         let playerSecret = p.playerSecret;
         let opponentSecret = p.opponentSecret;
         if (p1Secret !== null || p2Secret !== null) {
-          // Map based on whether this client was PLAYER1 (host) or PLAYER2 (guest)
           if (selfIsPlayer1) {
             playerSecret = p1Secret ?? playerSecret;
             opponentSecret = p2Secret ?? opponentSecret;
@@ -524,7 +514,6 @@ const App: React.FC = () => {
             opponentSecret = p1Secret ?? opponentSecret;
           }
         } else {
-          // If server sent 'yourSecret' / 'playerSecret' (per-connection) and 'opponentSecret', use them
           if (payloadYourSecretRaw !== null) playerSecret = payloadYourSecretRaw || playerSecret;
           if (payloadOpponentSecret !== null) opponentSecret = payloadOpponentSecret || opponentSecret;
         }
@@ -550,10 +539,9 @@ const App: React.FC = () => {
 
     connection.on('GameState', handleGameState);
 
-    // Game restart: server requests both players to reset secrets and start a fresh round
+    // Game restart
     connection.on('GameRestarted', (data: any) => {
       console.log('[SignalR: RECEIVE] GameRestarted', data);
-      // Clear local secrets and histories; server is authoritative and will send a GameState shortly
       setGameState(p => ({
         ...p,
         playerSecret: '',
@@ -583,11 +571,10 @@ const App: React.FC = () => {
       connection.off("GameState");
       connection.off("GameRestarted");
     };
-  }, [applyTurnResult]);
+  }, [applyTurnResult, showToast]);
 
   const handlePlayAgain = async () => {
     if (gameState.gameMode !== 'ONLINE' || !gameState.roomCode) {
-      // For local/AI mode, simply reset to secret setup
       setGameState(p => ({
         ...p,
         playerSecret: '',
@@ -604,7 +591,6 @@ const App: React.FC = () => {
     try {
       console.log('[SignalR: SEND] RestartGame', gameState.roomCode);
       await signalRService.getConnection().invoke('RestartGame', gameState.roomCode);
-      // Optimistically clear local state; server will broadcast GameRestarted/GameState soon
       setGameState(p => ({
         ...p,
         playerSecret: '',
@@ -617,7 +603,8 @@ const App: React.FC = () => {
       }));
     } catch (err) {
       console.error('[SignalR: ERROR] RestartGame failed', err);
-      alert('Failed to request a restart. Please try again.');
+      const simplifiedError = simplifySignalRError(err);
+      showToast('error', 'Restart Failed', simplifiedError);
     }
   };
 
@@ -631,13 +618,11 @@ const App: React.FC = () => {
     }));
   };
 
-  // --- SignalR INVOKES (SENDING) ---
-
   const handleRoomAction = async (role: PlayerRole, code: string) => {
     const cleanCode = code.trim().toUpperCase();
     if (gameState.gameMode === 'ONLINE') {
       if (!signalRService.isConnected) {
-        alert("Server Offline. Check your C# backend connection.");
+        showToast('error', 'Server Offline', 'Check your C# backend connection.');
         return;
       }
       try {
@@ -647,28 +632,32 @@ const App: React.FC = () => {
           console.log(`[SignalR: SUCCESS] Room created: ${cleanCode}`);
           setGameState(p => ({ ...p, playerRole: role, roomCode: cleanCode }));
           sessionStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify({ roomCode: cleanCode, role: 'HOST' }));
+          showToast('success', 'Room Created', `Room code: ${cleanCode}`);
         } else {
           console.log(`[SignalR: SEND] JoinRoom: Code=${cleanCode}, Role=GUEST`);
           await signalRService.getConnection().invoke("JoinRoom", cleanCode);
           console.log(`[SignalR: SUCCESS] Joined room: ${cleanCode}`);
           setGameState(p => ({ ...p, playerRole: role, roomCode: cleanCode, screen: 'WAITING_FOR_HOST' }));
           sessionStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify({ roomCode: cleanCode, role: 'GUEST' }));
+          showToast('success', 'Room Joined', `Connected to room ${cleanCode}`);
         }
       } catch (err) {
         console.error("[SignalR: ERROR] Room action failed:", err);
-        alert(`Server Error: ${err instanceof Error ? err.message : 'Unknown'}`);
+        const simplifiedError = simplifySignalRError(err);
+        showToast('error', 'Connection Error', simplifiedError);
       }
     }
   };
 
   const selectDigits = async (count: 3 | 4) => {
-    // Only HOST can set digit count in online mode; server broadcasts DifficultySet to GUEST
     if (gameState.gameMode === 'ONLINE' && gameState.playerRole === 'HOST') {
       try {
         await signalRService.getConnection().invoke("SetDifficulty", gameState.roomCode, count);
         setGameState(p => ({ ...p, digitCount: count, screen: 'PLAYER_SECRET_SETUP' }));
       } catch (err) {
         console.error("[SignalR: ERROR] SetDifficulty failed:", err);
+        const simplifiedError = simplifySignalRError(err);
+        showToast('error', 'Difficulty Error', simplifiedError);
         setGameState(p => ({ ...p, digitCount: count, screen: 'PLAYER_SECRET_SETUP' }));
       }
     } else {
@@ -697,20 +686,19 @@ const App: React.FC = () => {
         console.log("[SignalR: SUCCESS] Secret accepted by server.");
 
         setGameState(p => {
-          // Don't override if game has already started
           if (p.gameStatus === 'PLAYING') return p;
-          // Set secret and wait for GameStarted event from server
-          // The server will send GameStarted when both players have submitted secrets
           return {
             ...p,
             playerSecret: secret,
             screen: 'GAME',
-            gameStatus: 'WAITING', // Waiting for opponent's secret and GameStarted event
+            gameStatus: 'WAITING',
           };
         });
+        showToast('success', 'Code Locked', 'Your secret code has been set!');
       } catch (err) {
         console.error("[SignalR: ERROR] SubmitSecret failed:", err);
-        alert(`Locking code failed: ${err instanceof Error ? err.message : 'Server error'}`);
+        const simplifiedError = simplifySignalRError(err);
+        showToast('error', 'Code Lock Failed', simplifiedError);
         throw err;
       }
     }
@@ -729,12 +717,12 @@ const App: React.FC = () => {
       } catch (err) {
         console.error("[SignalR: ERROR] MakeGuess failed:", err);
         setGameState(p => ({ ...p, isPendingResult: false }));
+        const simplifiedError = simplifySignalRError(err);
         const msg = err instanceof Error ? err.message : 'Server error';
-        // "Not your turn" usually means our UI state is stale (e.g. other player rejoined and we didn't get GameState)
         if (msg.includes('Not your turn') || msg.includes('not your turn')) {
-          alert('It\'s not your turn. The game state may have updated (e.g. after the other player reconnected). Please wait for your turn.');
+          showToast('warning', 'Not Your Turn', 'Waiting for opponent\'s guess. Please wait.');
         } else {
-          alert(`Guess rejected: ${msg}`);
+          showToast('error', 'Guess Rejected', simplifiedError);
         }
       }
     }
@@ -751,11 +739,9 @@ const App: React.FC = () => {
     }
   }, [gameState.gameMode, gameState.screen, gameState.currentTurn, gameState.winner, gameState.digitCount, gameState.opponentGuessHistory, gameState.playerSecret, applyTurnResult]);
 
-  // Chat handlers
   const handleSendChatMessage = async (message: string) => {
     if (!gameState.roomCode || gameState.gameMode !== 'ONLINE') return;
     
-    // Optimistic UI update - add message immediately
     const tempId = `temp-${Date.now()}`;
     setChatMessages(prev => [...prev, {
       id: tempId,
@@ -767,28 +753,24 @@ const App: React.FC = () => {
     
     try {
       await signalRService.getConnection().invoke("SendChatMessage", gameState.roomCode, message);
-      // Message will be confirmed via the ChatMessage event (which may replace the temp one)
     } catch (err) {
       console.error("[SignalR: ERROR] SendChatMessage failed:", err);
-      // Remove the optimistic message on error
       setChatMessages(prev => prev.filter(m => m.id !== tempId));
-      alert('Failed to send message. Please try again.');
+      const simplifiedError = simplifySignalRError(err);
+      showToast('error', 'Message Failed', simplifiedError);
     }
   };
 
   const handleSendVoiceMessage = async (audioBlob: Blob) => {
     if (!gameState.roomCode || gameState.gameMode !== 'ONLINE') return;
     
-    // Check audio size - SignalR typically has a 32KB message limit
-    // Warn if audio is too large (allow up to 100KB to be safe)
-    const MAX_AUDIO_SIZE = 100 * 1024; // 100KB
+    const MAX_AUDIO_SIZE = 100 * 1024;
     if (audioBlob.size > MAX_AUDIO_SIZE) {
       const sizeMB = (audioBlob.size / (1024 * 1024)).toFixed(2);
-      alert(`Voice message is too large (${sizeMB}MB). Please record a shorter message (max ~5 seconds).`);
+      showToast('error', 'Audio Too Large', `Please record a shorter message (max ~5 seconds).`);
       return;
     }
     
-    // Optimistic UI: show sender's voice note immediately (receiver gets it via server)
     const tempId = `voice-temp-${Date.now()}`;
     const audioUrl = URL.createObjectURL(audioBlob);
     setChatMessages(prev => [...prev, {
@@ -803,32 +785,29 @@ const App: React.FC = () => {
     try {
       console.log("[SignalR: SEND] SendVoiceMessage: Size=", audioBlob.size, "Type=", audioBlob.type);
       
-      // Check connection before sending (but try to reconnect if needed)
       const conn = signalRService.getConnection();
       if (conn.state !== signalR.HubConnectionState.Connected) {
         console.warn('[SignalR: WARNING] Connection not ready, state:', conn.state);
-        // Try to reconnect if disconnected
         if (conn.state === signalR.HubConnectionState.Disconnected) {
           try {
             await signalRService.start();
-            // Wait a bit for connection to establish
             await new Promise(resolve => setTimeout(resolve, 500));
           } catch (err) {
             console.error('[SignalR: ERROR] Failed to reconnect:', err);
             setChatMessages(prev => prev.filter(m => m.id !== tempId));
             URL.revokeObjectURL(audioUrl);
-            alert('Connection lost. Please wait for reconnection and try again.');
+            const simplifiedError = simplifySignalRError(err);
+            showToast('error', 'Connection Lost', simplifiedError);
             return;
           }
         } else {
           setChatMessages(prev => prev.filter(m => m.id !== tempId));
           URL.revokeObjectURL(audioUrl);
-          alert('Connection not ready. Please wait a moment and try again.');
+          showToast('error', 'Connection Error', 'Please wait a moment and try again.');
           return;
         }
       }
       
-      // Convert blob to base64
       const reader = new FileReader();
       reader.onloadend = async () => {
         try {
@@ -837,37 +816,35 @@ const App: React.FC = () => {
             throw new Error('Failed to convert audio to base64');
           }
           
-          // Check base64 size
-          if (base64Audio.length > MAX_AUDIO_SIZE * 1.4) { // Base64 is ~33% larger
+          if (base64Audio.length > MAX_AUDIO_SIZE * 1.4) {
             setChatMessages(prev => prev.filter(m => m.id !== tempId));
             URL.revokeObjectURL(audioUrl);
-            alert('Voice message is too large after encoding. Please record a shorter message.');
+            showToast('error', 'Audio Encoding Error', 'Please record a shorter message.');
             return;
           }
           
           console.log("[SignalR: SEND] Sending voice message, base64 length:", base64Audio.length);
           
-          // Ensure connection is still active
           const conn = signalRService.getConnection();
           if (conn.state !== signalR.HubConnectionState.Connected) {
             setChatMessages(prev => prev.filter(m => m.id !== tempId));
             URL.revokeObjectURL(audioUrl);
-            alert('Connection lost. Please wait for reconnection and try again.');
+            showToast('error', 'Connection Lost', 'Please wait for reconnection and try again.');
             return;
           }
           
-          // Send roomCode, sender (HOST/GUEST), and base64Audio so backend can broadcast to the other player with sender
           await conn.invoke("SendVoiceMessage", gameState.roomCode, gameState.playerRole, base64Audio);
           console.log("[SignalR: SUCCESS] Voice message sent");
         } catch (err: any) {
           console.error("[SignalR: ERROR] SendVoiceMessage failed:", err);
           setChatMessages(prev => prev.filter(m => m.id !== tempId));
           URL.revokeObjectURL(audioUrl);
+          const simplifiedError = simplifySignalRError(err);
           const errorMsg = err?.message || 'Unknown error';
           if (errorMsg.includes('Connection') || errorMsg.includes('disconnected')) {
-            alert('Connection lost while sending voice message. Please try again.');
+            showToast('error', 'Connection Error', 'Connection lost while sending voice message.');
           } else {
-            alert(`Failed to send voice message: ${errorMsg}`);
+            showToast('error', 'Voice Send Failed', simplifiedError);
           }
         }
       };
@@ -875,14 +852,15 @@ const App: React.FC = () => {
         console.error("[SignalR: ERROR] FileReader error:", err);
         setChatMessages(prev => prev.filter(m => m.id !== tempId));
         URL.revokeObjectURL(audioUrl);
-        alert('Failed to process voice message. Please try again.');
+        showToast('error', 'File Error', 'Failed to process voice message.');
       };
       reader.readAsDataURL(audioBlob);
     } catch (err: any) {
       console.error("[SignalR: ERROR] SendVoiceMessage failed:", err);
       setChatMessages(prev => prev.filter(m => m.id !== tempId));
       URL.revokeObjectURL(audioUrl);
-      alert(`Failed to send voice message: ${err?.message || 'Unknown error'}`);
+      const simplifiedError = simplifySignalRError(err);
+      showToast('error', 'Voice Send Failed', simplifiedError);
     }
   };
 
@@ -899,20 +877,31 @@ const App: React.FC = () => {
       playerRole: 'NONE',
       isPendingResult: false 
     }));
-    setChatMessages([]); // Clear chat messages on reset
+    setChatMessages([]);
   };
 
+  // Theme: persist and share across screens
+	const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+		try {
+			const v = localStorage.getItem('ui_dark_mode');
+			return v ? JSON.parse(v) : false;
+		} catch { return false; }
+	});
+	const toggleDarkMode = () => {
+		setIsDarkMode(prev => {
+			const next = !prev;
+			try { localStorage.setItem('ui_dark_mode', JSON.stringify(next)); } catch {}
+			return next;
+		});
+	};
+
   const renderScreen = () => {
-/**
- * Renders the screen based on the current gameState.screen.
- * 
- * @returns {JSX.Element} The rendered screen component.
- */
     switch (gameState.screen) {
-      case 'HOME': return <HomeScreen onStart={toModeSelection} />;
-      case 'MODE_SELECTION': return <ModeSelection onSelect={selectMode} onBack={reset} />;
-      case 'ROOM_SETUP': return <RoomSetup onConfirm={handleRoomAction} onBack={toModeSelection} />;
-      case 'DIFFICULTY_SETUP': return <SetupScreen onSelect={selectDigits} onBack={toModeSelection} />;
+      case 'HOME': return <HomeScreen onStart={toModeSelection} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+      case 'MODE_SELECTION': return <ModeSelection onSelect={selectMode} onBack={reset} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+      case 'ROOM_SETUP': return <RoomSetup onConfirm={handleRoomAction} onBack={toModeSelection} onShowToast={showToast} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+      case 'DIFFICULTY_SETUP': return <SetupScreen onSelect={selectDigits} onBack={toModeSelection} onShowToast={showToast} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+      case 'PLAYER_SECRET_SETUP': return <PlayerSetupScreen digitCount={gameState.digitCount} onConfirm={finalizeSecrets} onBack={() => setGameState(p => ({ ...p, screen: gameState.playerRole === 'HOST' ? 'DIFFICULTY_SETUP' : 'ROOM_SETUP' }))} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
       case 'RECONNECTING': return (
         <GameLoader
           fullScreen={false}
@@ -921,6 +910,8 @@ const App: React.FC = () => {
           subtext={`Room ${gameState.roomCode} · Rejoining as ${gameState.playerRole}`}
           showCancel
           onCancel={reset}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
         />
       );
       case 'WAITING_FOR_OPPONENT': return (
@@ -931,6 +922,8 @@ const App: React.FC = () => {
           subtext={`Room ${gameState.roomCode} · Share the code so someone can join`}
           showCancel
           onCancel={reset}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
         />
       );
       case 'WAITING_FOR_HOST': return (
@@ -941,12 +934,13 @@ const App: React.FC = () => {
           subtext={`Room ${gameState.roomCode} · Host will choose digits, then you set your secret`}
           showCancel
           onCancel={reset}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
         />
       );
-      case 'PLAYER_SECRET_SETUP': return <PlayerSetupScreen digitCount={gameState.digitCount} onConfirm={finalizeSecrets} onBack={() => setGameState(p => ({ ...p, screen: gameState.playerRole === 'HOST' ? 'DIFFICULTY_SETUP' : 'ROOM_SETUP' }))} />;
       case 'GAME': return (
         <>
-          <GameScreenComp state={gameState} onGuess={handlePlayerGuess} onQuit={reset} />
+          <GameScreenComp state={gameState} onGuess={handlePlayerGuess} onQuit={reset} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
           {gameState.gameMode === 'ONLINE' && gameState.roomCode && gameState.playerRole !== 'NONE' && (
             <ChatPanel
               roomCode={gameState.roomCode}
@@ -955,12 +949,12 @@ const App: React.FC = () => {
               messages={chatMessages}
               onSendMessage={handleSendChatMessage}
               onSendVoice={handleSendVoiceMessage}
+              isDarkMode={isDarkMode}
             />
           )}
         </>
       );
       case 'WIN': {
-        // If server didn't provide a mapped winner, try to infer from latest guess results as a fallback
         let derivedWinner = gameState.winner;
         if (!derivedWinner) {
           const topSelf = gameState.selfGuessHistory[0];
@@ -968,18 +962,19 @@ const App: React.FC = () => {
           if (topSelf && topSelf.bulls === gameState.digitCount) derivedWinner = 'SELF';
           else if (topOpp && topOpp.bulls === gameState.digitCount) derivedWinner = 'OPPONENT';
         }
-        return <WinScreen winner={derivedWinner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} playerRole={gameState.playerRole} />;
+        return <WinScreen winner={derivedWinner} playerSecret={gameState.playerSecret} opponentSecret={gameState.opponentSecret} playerAttempts={gameState.selfGuessHistory.length} opponentAttempts={gameState.opponentGuessHistory.length} onPlayAgain={handlePlayAgain} onHome={reset} playerRole={gameState.playerRole} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
       }
       default: return <HomeScreen onStart={toModeSelection} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 font-sans">
+    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'} flex flex-col items-center justify-center p-4 font-sans transition-colors duration-300`}>
       {showInitialLoader && (
-        <GameLoader
-          status="Connecting to server..."
-          subtext="Digit Duel is getting ready..."
+        <SequentialGameLoader
+          minDuration={MIN_LOADER_MS}
+          maxDuration={MAX_LOADER_MS}
+          onComplete={() => setShowInitialLoader(false)}
         />
       )}
       <div className={`w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 relative transition-opacity duration-500 ${showInitialLoader ? 'opacity-0' : 'opacity-100'}`}>
@@ -997,6 +992,9 @@ const App: React.FC = () => {
         </div>
         <div className="opacity-60">© {new Date().getFullYear()} Viluthugal Production</div>
       </div>
+
+      {/* Toast Notifications */}
+      <Toast messages={toastMessages} onRemove={removeToast} />
     </div>
   );
 };

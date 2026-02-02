@@ -22,7 +22,7 @@ const WinScreen: React.FC<Props> = ({
   onHome,
   playerRole = 'NONE',
 }) => {
-const isWinner = winner === playerRole;
+const isWinner = winner === 'SELF';
   const isHost = playerRole === 'HOST';
 
   return (
