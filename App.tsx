@@ -990,7 +990,7 @@ const App: React.FC = () => {
           <span>Mode: {gameState.gameMode}</span>
           {gameState.roomCode && <span>Room: {gameState.roomCode}</span>}
         </div>
-        <div className="opacity-60">© {new Date().getFullYear()} Viluthugal Production</div>
+        <div className="opacity-60">© {new Date().getFullYear()} AswinCodes21 (V2.1)</div>
       </div>
 
       {/* Toast Notifications */}

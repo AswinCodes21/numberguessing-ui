@@ -9,31 +9,37 @@ interface HomeScreenProps {
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDarkMode }) => {
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-500 ${
-      isDarkMode 
-        ? 'bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900' 
+
+    <div className={`min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-500 ${isDarkMode
+        ? 'bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900'
         : 'bg-gradient-to-br from-slate-50 via-white to-blue-50'
-    }`}>
+      }`}>
+      <style>
+        {`
+  @keyframes underlinePulse {
+    0% { opacity: 0.3; }
+    50% { opacity: 0.9; }
+    100% { opacity: 0.3; }
+  }
+`}
+      </style>
       {/* 3D Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* Animated gradient blobs */}
-        <div className={`absolute top-20 -left-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${
-          isDarkMode 
-            ? 'bg-gradient-to-r from-blue-500 to-cyan-400' 
+        <div className={`absolute top-20 -left-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${isDarkMode
+            ? 'bg-gradient-to-r from-blue-500 to-cyan-400'
             : 'bg-gradient-to-r from-blue-300 to-cyan-200'
-        }`}></div>
-        
-        <div className={`absolute top-40 -right-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${
-          isDarkMode 
-            ? 'bg-gradient-to-r from-cyan-400 to-blue-500' 
+          }`}></div>
+
+        <div className={`absolute top-40 -right-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${isDarkMode
+            ? 'bg-gradient-to-r from-cyan-400 to-blue-500'
             : 'bg-gradient-to-r from-cyan-300 to-blue-300'
-        }`} style={{ animationDelay: '2s' }}></div>
-        
-        <div className={`absolute -bottom-40 left-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${
-          isDarkMode 
-            ? 'bg-gradient-to-r from-blue-600 to-cyan-500' 
+          }`} style={{ animationDelay: '2s' }}></div>
+
+        <div className={`absolute -bottom-40 left-40 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse ${isDarkMode
+            ? 'bg-gradient-to-r from-blue-600 to-cyan-500'
             : 'bg-gradient-to-r from-blue-300 to-cyan-200'
-        }`} style={{ animationDelay: '4s' }}></div>
+          }`} style={{ animationDelay: '4s' }}></div>
 
         {/* Grid Pattern Overlay */}
         <div className={`absolute inset-0 ${isDarkMode ? 'opacity-10' : 'opacity-5'}`}>
@@ -55,11 +61,10 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
       <div className="absolute top-6 right-6 z-20">
         <button
           onClick={toggleDarkMode}
-          className={`relative inline-flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl ${
-            isDarkMode
+          className={`relative inline-flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl ${isDarkMode
               ? 'bg-slate-800 bg-opacity-50 backdrop-blur-md border border-cyan-400 border-opacity-30 hover:border-opacity-50'
               : 'bg-white bg-opacity-70 backdrop-blur-md border border-slate-200 hover:border-blue-300'
-          }`}
+            }`}
           title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         >
           {isDarkMode ? (
@@ -76,49 +81,45 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
 
       {/* Main Content Container */}
       <div className="w-full max-w-2xl space-y-8 relative z-10">
-        
+
         {/* Hero Section */}
         <div className="flex flex-col items-center gap-6">
           {/* Icon with 3D Effect */}
           <div className="relative group">
-            <div className={`absolute -inset-4 rounded-3xl blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-300 animate-pulse ${
-              isDarkMode
+            <div className={`absolute -inset-4 rounded-3xl blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-300 animate-pulse ${isDarkMode
                 ? 'bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-400'
                 : 'bg-gradient-to-r from-blue-300 via-cyan-300 to-blue-300'
-            }`}></div>
-            <div className={`relative w-28 h-28 rounded-3xl flex items-center justify-center shadow-2xl transform group-hover:scale-110 group-hover:-translate-y-2 transition-all duration-300 ${
-              isDarkMode
+              }`}></div>
+            <div className={`relative w-28 h-28 rounded-3xl flex items-center justify-center shadow-2xl transform group-hover:scale-110 group-hover:-translate-y-2 transition-all duration-300 ${isDarkMode
                 ? 'bg-gradient-to-br from-blue-500 to-cyan-500'
                 : 'bg-gradient-to-br from-blue-400 to-cyan-400'
-            }`} style={{
-              boxShadow: isDarkMode 
-                ? '0 25px 50px -12px rgba(59, 130, 246, 0.5), 0 0 60px rgba(34, 211, 238, 0.3)'
-                : '0 25px 50px -12px rgba(59, 130, 246, 0.3), 0 0 60px rgba(34, 211, 238, 0.2)'
-            }}>
+              }`} style={{
+                boxShadow: isDarkMode
+                  ? '0 25px 50px -12px rgba(59, 130, 246, 0.5), 0 0 60px rgba(34, 211, 238, 0.3)'
+                  : '0 25px 50px -12px rgba(59, 130, 246, 0.3), 0 0 60px rgba(34, 211, 238, 0.2)'
+              }}>
               <span className="text-7xl drop-shadow-lg">🎯</span>
             </div>
           </div>
 
           {/* Title */}
-          <div className="space-y-2 text-center">
-            <h1 className={`text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r tracking-tight drop-shadow-lg ${
-              isDarkMode
-                ? 'from-cyan-300 via-blue-300 to-cyan-300'
-                : 'from-blue-600 via-cyan-500 to-blue-600'
+          <p className={`relative inline-block font-bold text-sm uppercase tracking-[0.25em] ${isDarkMode ? 'text-cyan-400' : 'text-blue-600'
             }`}>
-              Digit Duel
-            </h1>
-            <p className={`font-bold text-sm uppercase tracking-[0.25em] ${
-              isDarkMode ? 'text-cyan-400' : 'text-blue-600'
-            }`}>
-              VILUTHUGAL PRODUCTION
-            </p>
-          </div>
+            A game by DigitForge Studios
+
+            {/* Animated underline */}
+            <span
+              className="pointer-events-none absolute left-0 -bottom-1 h-[2px] w-full bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-70"
+              style={{
+                animation: 'underlinePulse 2.5s ease-in-out infinite'
+              }}
+            />
+          </p>
+
 
           {/* Description */}
-          <p className={`text-lg max-w-lg text-center leading-relaxed font-medium ${
-            isDarkMode ? 'text-slate-300' : 'text-slate-700'
-          }`}>
+          <p className={`text-lg max-w-lg text-center leading-relaxed font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'
+            }`}>
             The classic code-breaking logic game. Can you guess the secret number?
           </p>
         </div>
@@ -127,11 +128,10 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
         <div className="pt-4">
           <button
             onClick={onStart}
-            className={`w-full font-bold text-lg py-6 px-8 rounded-full transition-all duration-300 transform hover:scale-[1.02] active:scale-95 shadow-2xl hover:shadow-3xl flex items-center justify-center gap-3 group relative overflow-hidden ${
-              isDarkMode
+            className={`w-full font-bold text-lg py-6 px-8 rounded-full transition-all duration-300 transform hover:scale-[1.02] active:scale-95 shadow-2xl hover:shadow-3xl flex items-center justify-center gap-3 group relative overflow-hidden ${isDarkMode
                 ? 'bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 hover:from-blue-600 hover:via-cyan-500 hover:to-blue-600 text-white'
                 : 'bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 hover:from-blue-600 hover:via-cyan-500 hover:to-blue-600 text-white'
-            }`}
+              }`}
             style={{
               boxShadow: isDarkMode
                 ? '0 20px 40px rgba(59, 130, 246, 0.4), 0 0 40px rgba(34, 211, 238, 0.2)'
@@ -148,30 +148,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
         {/* Game Rules Section */}
         <div className="space-y-4">
           {/* Green Card */}
-          <div className={`group rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border hover:-translate-y-1 cursor-pointer ${
-            isDarkMode
+          <div className={`group rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border hover:-translate-y-1 cursor-pointer ${isDarkMode
               ? 'bg-slate-800 bg-opacity-50 backdrop-blur-md border-emerald-400 border-opacity-30 hover:border-emerald-300 hover:bg-opacity-60'
               : 'bg-white bg-opacity-70 backdrop-blur-md border-emerald-300 border-opacity-50 hover:border-emerald-400 hover:bg-opacity-90'
-          }`}>
+            }`}>
             <div className="flex items-start gap-5">
               <div className="flex-shrink-0">
-                <div className={`flex items-center justify-center h-12 w-12 rounded-full transition-colors ${
-                  isDarkMode
+                <div className={`flex items-center justify-center h-12 w-12 rounded-full transition-colors ${isDarkMode
                     ? 'bg-emerald-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-emerald-400 bg-opacity-30 group-hover:bg-opacity-50'
-                }`}>
+                  }`}>
                   <span className="text-2xl">🟢</span>
                 </div>
               </div>
               <div className="flex-1 text-left">
-                <h3 className={`text-sm font-bold uppercase tracking-wide ${
-                  isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
-                }`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wide ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
+                  }`}>
                   Correct Number - Correct Place
                 </h3>
-                <p className={`text-sm mt-1 ${
-                  isDarkMode ? 'text-slate-300' : 'text-slate-700'
-                }`}>
+                <p className={`text-sm mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'
+                  }`}>
                   Right digit, right spot
                 </p>
               </div>
@@ -179,30 +175,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
           </div>
 
           {/* Yellow Card */}
-          <div className={`group rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border hover:-translate-y-1 cursor-pointer ${
-            isDarkMode
+          <div className={`group rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border hover:-translate-y-1 cursor-pointer ${isDarkMode
               ? 'bg-slate-800 bg-opacity-50 backdrop-blur-md border-amber-400 border-opacity-30 hover:border-amber-300 hover:bg-opacity-60'
               : 'bg-white bg-opacity-70 backdrop-blur-md border-amber-300 border-opacity-50 hover:border-amber-400 hover:bg-opacity-90'
-          }`}>
+            }`}>
             <div className="flex items-start gap-5">
               <div className="flex-shrink-0">
-                <div className={`flex items-center justify-center h-12 w-12 rounded-full transition-colors ${
-                  isDarkMode
+                <div className={`flex items-center justify-center h-12 w-12 rounded-full transition-colors ${isDarkMode
                     ? 'bg-amber-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-amber-400 bg-opacity-30 group-hover:bg-opacity-50'
-                }`}>
+                  }`}>
                   <span className="text-2xl">🟡</span>
                 </div>
               </div>
               <div className="flex-1 text-left">
-                <h3 className={`text-sm font-bold uppercase tracking-wide ${
-                  isDarkMode ? 'text-amber-300' : 'text-amber-700'
-                }`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wide ${isDarkMode ? 'text-amber-300' : 'text-amber-700'
+                  }`}>
                   Correct Number
                 </h3>
-                <p className={`text-sm mt-1 ${
-                  isDarkMode ? 'text-slate-300' : 'text-slate-700'
-                }`}>
+                <p className={`text-sm mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'
+                  }`}>
                   Right digit, wrong spot
                 </p>
               </div>
@@ -218,5 +210,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
     </div>
   );
 };
+
+
+
 
 export default HomeScreen;
