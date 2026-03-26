@@ -238,19 +238,24 @@ const App: React.FC = () => {
       });
     });
 
-    connection.on("GuessResult", (player: "PLAYER1" | "PLAYER2", result: { guess: string, bulls: number, cows: number }) => {
+    connection.on("GuessResult", (player: "PLAYER1" | "PLAYER2", result: { guess?: string; Guess?: string; bulls?: number; Bulls?: number; cows?: number; Cows?: number }) => {
       console.log(`[SignalR: RECEIVE] GuessResult: Player=${player}, Result=${JSON.stringify(result)}`);
       setGameState(p => {
         const amHost = p.playerRole === 'HOST';
         const selfIsPlayer1 = amHost;
         const turn: Turn = (player === 'PLAYER1' && selfIsPlayer1) || (player === 'PLAYER2' && !selfIsPlayer1) ? 'SELF' : 'OPPONENT';
-        const isWinner = result.bulls === p.digitCount;
-        const newResult: GuessResult = { ...result, timestamp: Date.now() };
+        const normalizedResult: GuessResult = {
+          guess: result.guess ?? result.Guess ?? '',
+          bulls: result.bulls ?? result.Bulls ?? 0,
+          cows: result.cows ?? result.Cows ?? 0,
+          timestamp: Date.now(),
+        };
+        const isWinner = normalizedResult.bulls === p.digitCount;
 
         return {
           ...p,
-          selfGuessHistory: turn === 'SELF' ? [newResult, ...p.selfGuessHistory] : p.selfGuessHistory,
-          opponentGuessHistory: turn === 'OPPONENT' ? [newResult, ...p.opponentGuessHistory] : p.opponentGuessHistory,
+          selfGuessHistory: turn === 'SELF' ? [normalizedResult, ...p.selfGuessHistory] : p.selfGuessHistory,
+          opponentGuessHistory: turn === 'OPPONENT' ? [normalizedResult, ...p.opponentGuessHistory] : p.opponentGuessHistory,
           winner: isWinner ? turn : p.winner,
           gameStatus: isWinner ? 'FINISHED' : p.gameStatus,
           screen: isWinner ? 'WIN' : p.screen,
