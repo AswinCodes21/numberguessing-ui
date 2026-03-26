@@ -180,7 +180,7 @@ const RoomSetup: React.FC<RoomSetupProps> = ({ onConfirm, onBack, onShowToast, i
                   Host and invite others
                 </p>
               </div>
-              <div className={`text-3xl ${selectedRole === 'HOST' ? 'scale-110' : ''} transition-transform`}>👑</div>
+              <div className={`text-3xl ${selectedRole === 'HOST' ? 'scale-110' : ''} transition-transform`}><svg className="w-8 h-8 text-amber-400 animate-bounce" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg></div>
             </div>
           </button>
 
@@ -209,7 +209,7 @@ const RoomSetup: React.FC<RoomSetupProps> = ({ onConfirm, onBack, onShowToast, i
                   Enter a room code
                 </p>
               </div>
-              <div className={`text-3xl ${selectedRole === 'GUEST' ? 'scale-110' : ''} transition-transform`}>🎮</div>
+              <div className={`text-3xl ${selectedRole === 'GUEST' ? 'scale-110' : ''} transition-transform`}><svg className="w-8 h-8 text-cyan-400 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="10" width="18" height="8" rx="4"/><path d="M8 14h4"/><path d="M10 12v4"/><circle cx="16" cy="13" r="1" fill="currentColor"/><circle cx="18" cy="15" r="1" fill="currentColor"/></svg></div>
             </div>
           </button>
         </div>
@@ -263,7 +263,7 @@ const RoomSetup: React.FC<RoomSetupProps> = ({ onConfirm, onBack, onShowToast, i
                     : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                 }`}
               >
-                📋 Copy Code
+                Copy Code
               </button>
             )}
 

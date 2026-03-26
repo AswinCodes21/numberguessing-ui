@@ -21,6 +21,17 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
     50% { opacity: 0.9; }
     100% { opacity: 0.3; }
   }
+
+  @keyframes targetRingPulse {
+    0% { transform: scale(0.9); opacity: 0.5; }
+    70% { transform: scale(1.2); opacity: 0; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+
+  @keyframes targetSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `}
       </style>
       {/* 3D Background Elements */}
@@ -98,7 +109,24 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
                   ? '0 25px 50px -12px rgba(59, 130, 246, 0.5), 0 0 60px rgba(34, 211, 238, 0.3)'
                   : '0 25px 50px -12px rgba(59, 130, 246, 0.3), 0 0 60px rgba(34, 211, 238, 0.2)'
               }}>
-              <span className="text-7xl drop-shadow-lg">🎯</span>
+              <div className="relative w-20 h-20" aria-hidden="true">
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-cyan-200"
+                  style={{ animation: 'targetRingPulse 2.2s ease-out infinite' }}
+                />
+                <div
+                  className="absolute inset-[6px] rounded-full border-4 border-white/80"
+                  style={{ animation: 'targetRingPulse 2.2s ease-out infinite 0.4s' }}
+                />
+                <div className="absolute inset-[16px] rounded-full bg-white/90" />
+                <div className="absolute inset-[30px] rounded-full bg-cyan-100" />
+                <div
+                  className="absolute inset-[-4px] rounded-full border border-white/50"
+                  style={{ animation: 'targetSpin 8s linear infinite' }}
+                >
+                  <span className="absolute -top-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-white/80" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -158,7 +186,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
                     ? 'bg-emerald-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-emerald-400 bg-opacity-30 group-hover:bg-opacity-50'
                   }`}>
-                  <span className="text-2xl">🟢</span>
+                  <span className="w-4 h-4 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true"></span>
                 </div>
               </div>
               <div className="flex-1 text-left">
@@ -185,7 +213,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
                     ? 'bg-amber-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-amber-400 bg-opacity-30 group-hover:bg-opacity-50'
                   }`}>
-                  <span className="text-2xl">🟡</span>
+                  <span className="w-4 h-4 rounded-full bg-amber-400 animate-pulse" aria-hidden="true"></span>
                 </div>
               </div>
               <div className="flex-1 text-left">

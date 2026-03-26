@@ -125,7 +125,7 @@ const ModeSelection: React.FC<ModeSelectionProps> = ({ onSelect, onBack, isDarkM
             <div className="flex flex-col items-center gap-5">
               {/* Icon */}
               <div className={`relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br from-blue-500 to-cyan-500`}>
-                <span className="text-3xl">🤖</span>
+                <svg className="w-8 h-8 text-white animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="6" y="8" width="12" height="10" rx="2"/><path d="M12 4v4"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><path d="M9 16h6"/></svg>
               </div>
 
               {/* Text */}
@@ -156,7 +156,7 @@ const ModeSelection: React.FC<ModeSelectionProps> = ({ onSelect, onBack, isDarkM
             <div className="flex flex-col items-center gap-5">
               {/* Icon */}
               <div className={`relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br from-cyan-500 to-blue-500`}>
-                <span className="text-3xl">🌐</span>
+                <svg className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '8s' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 010 18"/><path d="M12 3a15 15 0 000 18"/></svg>
               </div>
 
               {/* Text */}
