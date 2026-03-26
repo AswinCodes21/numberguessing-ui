@@ -432,6 +432,9 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit, onPlaySound }
                   // Fix: Ensure the callback ref returns void to satisfy TypeScript Ref type
                   ref={el => { inputRefs.current[idx] = el; }}
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
                   maxLength={1}
                   disabled={!isMyTurn}
                   value={d}
