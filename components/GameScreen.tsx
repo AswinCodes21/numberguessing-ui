@@ -6,6 +6,7 @@ interface Props {
   state: GameState;
   onGuess: (guess: string) => void;
   onQuit: () => void;
+  onPlaySound?: (kind: 'submit' | 'error') => void;
 }
 
 const HistoryPanel: React.FC<{ title: string; history: GuessResult[]; icon: string; theme: 'indigo' | 'slate' }> = ({ title, history, icon, theme }) => {
@@ -41,7 +42,7 @@ const HistoryPanel: React.FC<{ title: string; history: GuessResult[]; icon: stri
   );
 };
 
-const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
+const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit, onPlaySound }) => {
   const [digits, setDigits] = useState<string[]>(new Array(state.digitCount).fill(''));
   const [error, setError] = useState<string | null>(null);
   const [secretVisible, setSecretVisible] = useState(false); // default hidden; toggle to reveal
