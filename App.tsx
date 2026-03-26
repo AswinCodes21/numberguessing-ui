@@ -124,7 +124,8 @@ const App: React.FC = () => {
   const playSound = useCallback((kind: 'tap' | 'submit' | 'error' | 'turnSelf' | 'turnOpponent' | 'myResult' | 'opponentResult' | 'win' | 'lose') => {
     switch (kind) {
       case 'tap':
-        playTone(560, 0.05, 'triangle', 0.09);
+        playTone(440, 0.04, 'sine', 0.04);
+        playTone(660, 0.06, 'sine', 0.025, 0.02);
         break;
       case 'submit':
         playTone(620, 0.08, 'square', 0.11);
