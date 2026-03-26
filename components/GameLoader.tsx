@@ -110,7 +110,7 @@ const GameLoader: React.FC<GameLoaderProps> = ({
                   ? 'bg-gradient-to-br from-blue-500 to-cyan-500'
                   : 'bg-gradient-to-br from-blue-400 to-cyan-400'
               }`}>
-                <span className="text-5xl">🎯</span>
+                <div className="relative w-12 h-12" aria-hidden="true"><div className="absolute inset-0 rounded-full border-2 border-cyan-300 animate-ping"></div><div className="absolute inset-[6px] rounded-full border-4 border-white/80"></div><div className="absolute inset-[14px] rounded-full bg-cyan-100"></div></div>
               </div>
             </div>
             <h1 className={`text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r tracking-tight ${
@@ -173,7 +173,7 @@ const GameLoader: React.FC<GameLoaderProps> = ({
               <p className={`text-sm font-semibold ${
                 isDarkMode ? 'text-blue-300' : 'text-blue-700'
               }`}>
-                💡 Pro Tip: Use your guess history wisely to narrow down the secret!
+                Pro Tip: Use your guess history wisely to narrow down the secret!
               </p>
             </div>
           </div>

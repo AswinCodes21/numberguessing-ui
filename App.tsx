@@ -1161,7 +1161,14 @@ const App: React.FC = () => {
           aria-pressed={soundEnabled}
           title={soundEnabled ? 'Turn sound off' : 'Turn sound on'}
         >
-          {soundEnabled ? '🔊 Sound On' : '🔇 Sound Off'}
+          <span className="inline-flex items-center gap-2">
+            {soundEnabled ? (
+              <svg className="w-4 h-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15 9a4 4 0 010 6"/><path d="M18 7a7 7 0 010 10"/></svg>
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M23 9l-6 6"/><path d="M17 9l6 6"/></svg>
+            )}
+            <span>{soundEnabled ? 'Sound On' : 'Sound Off'}</span>
+          </span>
         </button>
         {renderScreen()}
       </div>

@@ -186,7 +186,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
                     ? 'bg-emerald-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-emerald-400 bg-opacity-30 group-hover:bg-opacity-50'
                   }`}>
-                  <span className="text-2xl">🟢</span>
+                  <span className="w-4 h-4 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true"></span>
                 </div>
               </div>
               <div className="flex-1 text-left">
@@ -213,7 +213,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStart, isDarkMode, toggleDark
                     ? 'bg-amber-500 bg-opacity-20 group-hover:bg-opacity-40'
                     : 'bg-amber-400 bg-opacity-30 group-hover:bg-opacity-50'
                   }`}>
-                  <span className="text-2xl">🟡</span>
+                  <span className="w-4 h-4 rounded-full bg-amber-400 animate-pulse" aria-hidden="true"></span>
                 </div>
               </div>
               <div className="flex-1 text-left">

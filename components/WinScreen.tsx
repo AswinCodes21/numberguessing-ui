@@ -29,7 +29,11 @@ const isWinner = winner === 'SELF';
     <div className="p-8 md:p-12 text-center flex flex-col items-center win-screen">
       {/* Result headline */}
       <div className="text-6xl md:text-7xl mb-4 win-emoji">
-        {isWinner ? '👑' : '💀'}
+        {isWinner ? (
+          <svg className="w-16 h-16 md:w-20 md:h-20 text-amber-400 animate-bounce mx-auto" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/></svg>
+        ) : (
+          <svg className="w-16 h-16 md:w-20 md:h-20 text-slate-600 animate-pulse mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="10" r="6"/><path d="M8 16l-1 5"/><path d="M16 16l1 5"/><circle cx="10" cy="9" r="1" fill="currentColor"/><circle cx="14" cy="9" r="1" fill="currentColor"/></svg>
+        )}
       </div>
       <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-1 leading-none">
         {isWinner ? 'You won!' : 'You lost'}
