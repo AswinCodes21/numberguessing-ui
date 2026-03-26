@@ -16,6 +16,7 @@ import SequentialGameLoader from './components/SequentialGameLoader';
 import Toast, { ToastMessage } from './components/Toast';
 
 const ROOM_STORAGE_KEY = 'numberguess_room';
+const SOUND_ENABLED_STORAGE_KEY = 'numberguess_sound_enabled';
 
 function getInitialGameState(): GameState {
   const defaultState: GameState = {
@@ -54,8 +55,22 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showInitialLoader, setShowInitialLoader] = useState(true);
   const [toastMessages, setToastMessages] = useState<ToastMessage[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(SOUND_ENABLED_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
   const playerRoleRef = useRef<PlayerRole>('NONE');
   const reconnectAttemptedRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const hasSoundInteractionRef = useRef(false);
+  const prevTurnRef = useRef<Turn>(getInitialGameState().currentTurn);
+  const prevWinnerRef = useRef<Turn | null>(null);
+  const prevSelfHistoryLenRef = useRef(0);
+  const prevOpponentHistoryLenRef = useRef(0);
 
   const MIN_LOADER_MS = 4800; // 6 messages × 800ms = 4800ms
   const MAX_LOADER_MS = 10000;
@@ -71,6 +86,82 @@ const App: React.FC = () => {
   const removeToast = (id: string) => {
     setToastMessages(prev => prev.filter(t => t.id !== id));
   };
+
+  const ensureAudioContext = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioContextRef.current) audioContextRef.current = new AudioCtx();
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => undefined);
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const registerSoundInteraction = useCallback(() => {
+    hasSoundInteractionRef.current = true;
+    ensureAudioContext();
+  }, [ensureAudioContext]);
+
+  const playTone = useCallback((frequency: number, duration = 0.1, type: OscillatorType = 'triangle', volume = 0.08, delay = 0) => {
+    if (!soundEnabled || !hasSoundInteractionRef.current) return;
+    const context = ensureAudioContext();
+    if (!context) return;
+    const when = context.currentTime + delay;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, when);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(Math.max(volume, 0.0002), when + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    osc.connect(gain);
+    gain.connect(context.destination);
+    osc.start(when);
+    osc.stop(when + duration + 0.03);
+  }, [ensureAudioContext, soundEnabled]);
+
+  const playSound = useCallback((kind: 'tap' | 'submit' | 'error' | 'turnSelf' | 'turnOpponent' | 'myResult' | 'opponentResult' | 'win' | 'lose') => {
+    switch (kind) {
+      case 'tap':
+        playTone(560, 0.05, 'triangle', 0.09);
+        break;
+      case 'submit':
+        playTone(620, 0.08, 'square', 0.11);
+        playTone(860, 0.1, 'triangle', 0.11, 0.07);
+        break;
+      case 'error':
+        playTone(220, 0.12, 'sawtooth', 0.14);
+        playTone(165, 0.14, 'sawtooth', 0.12, 0.1);
+        break;
+      case 'turnSelf':
+        playTone(660, 0.09, 'sine', 0.1);
+        playTone(880, 0.11, 'triangle', 0.11, 0.08);
+        break;
+      case 'turnOpponent':
+        playTone(440, 0.08, 'sine', 0.08);
+        playTone(300, 0.12, 'triangle', 0.07, 0.08);
+        break;
+      case 'myResult':
+        playTone(720, 0.08, 'triangle', 0.11);
+        playTone(940, 0.08, 'triangle', 0.11, 0.07);
+        break;
+      case 'opponentResult':
+        playTone(320, 0.08, 'triangle', 0.08);
+        playTone(420, 0.08, 'triangle', 0.08, 0.07);
+        break;
+      case 'win':
+        playTone(660, 0.11, 'triangle', 0.12);
+        playTone(880, 0.11, 'triangle', 0.14, 0.1);
+        playTone(1100, 0.14, 'triangle', 0.14, 0.22);
+        break;
+      case 'lose':
+        playTone(330, 0.12, 'sine', 0.09);
+        playTone(260, 0.14, 'sine', 0.09, 0.1);
+        playTone(210, 0.14, 'sine', 0.1, 0.22);
+        break;
+    }
+  }, [playTone]);
 
   // Helper to simplify SignalR error messages
   const simplifySignalRError = (error: any): string => {
@@ -899,6 +990,74 @@ const App: React.FC = () => {
 			return next;
 		});
 	};
+  const toggleSound = () => {
+    setSoundEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem(SOUND_ENABLED_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    prevTurnRef.current = gameState.currentTurn;
+    prevWinnerRef.current = gameState.winner;
+    prevSelfHistoryLenRef.current = gameState.selfGuessHistory.length;
+    prevOpponentHistoryLenRef.current = gameState.opponentGuessHistory.length;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      audioContextRef.current?.close().catch(() => undefined);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!soundEnabled || !hasSoundInteractionRef.current) return;
+    if (gameState.gameStatus === 'PLAYING' && prevTurnRef.current !== gameState.currentTurn) {
+      playSound(gameState.currentTurn === 'SELF' ? 'turnSelf' : 'turnOpponent');
+    }
+    prevTurnRef.current = gameState.currentTurn;
+  }, [gameState.currentTurn, gameState.gameStatus, playSound, soundEnabled]);
+
+  useEffect(() => {
+    if (!soundEnabled || !hasSoundInteractionRef.current) {
+      prevSelfHistoryLenRef.current = gameState.selfGuessHistory.length;
+      prevOpponentHistoryLenRef.current = gameState.opponentGuessHistory.length;
+      return;
+    }
+    if (gameState.selfGuessHistory.length > prevSelfHistoryLenRef.current) {
+      playSound('myResult');
+    }
+    if (gameState.opponentGuessHistory.length > prevOpponentHistoryLenRef.current) {
+      playSound('opponentResult');
+    }
+    prevSelfHistoryLenRef.current = gameState.selfGuessHistory.length;
+    prevOpponentHistoryLenRef.current = gameState.opponentGuessHistory.length;
+  }, [gameState.selfGuessHistory.length, gameState.opponentGuessHistory.length, playSound, soundEnabled]);
+
+  useEffect(() => {
+    if (!soundEnabled || !hasSoundInteractionRef.current) {
+      prevWinnerRef.current = gameState.winner;
+      return;
+    }
+    if (!prevWinnerRef.current && gameState.winner) {
+      playSound(gameState.winner === 'SELF' ? 'win' : 'lose');
+    }
+    prevWinnerRef.current = gameState.winner;
+  }, [gameState.winner, playSound, soundEnabled]);
+
+  const handleGlobalClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const interactive = target.closest('button, a, [role="button"], input, textarea, select, label');
+    if (!interactive) return;
+    registerSoundInteraction();
+    playSound('tap');
+  };
+
+  const handleGlobalKeyDown = () => {
+    registerSoundInteraction();
+  };
 
   const renderScreen = () => {
     switch (gameState.screen) {
@@ -945,7 +1104,14 @@ const App: React.FC = () => {
       );
       case 'GAME': return (
         <>
-          <GameScreenComp state={gameState} onGuess={handlePlayerGuess} onQuit={reset} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
+          <GameScreenComp
+            state={gameState}
+            onGuess={handlePlayerGuess}
+            onQuit={reset}
+            onPlaySound={kind => playSound(kind)}
+            isDarkMode={isDarkMode}
+            toggleDarkMode={toggleDarkMode}
+          />
           {gameState.gameMode === 'ONLINE' && gameState.roomCode && gameState.playerRole !== 'NONE' && (
             <ChatPanel
               roomCode={gameState.roomCode}
@@ -974,7 +1140,11 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'} flex flex-col items-center justify-center p-4 font-sans transition-colors duration-300`}>
+    <div
+      className={`min-h-screen ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'} flex flex-col items-center justify-center p-4 font-sans transition-colors duration-300`}
+      onClickCapture={handleGlobalClickCapture}
+      onKeyDownCapture={handleGlobalKeyDown}
+    >
       {showInitialLoader && (
         <SequentialGameLoader
           minDuration={MIN_LOADER_MS}
@@ -983,6 +1153,15 @@ const App: React.FC = () => {
         />
       )}
       <div className={`w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 relative transition-opacity duration-500 ${showInitialLoader ? 'opacity-0' : 'opacity-100'}`}>
+        <button
+          type="button"
+          onClick={toggleSound}
+          className="absolute top-4 right-4 z-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-200 bg-white/90 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors"
+          aria-pressed={soundEnabled}
+          title={soundEnabled ? 'Turn sound off' : 'Turn sound on'}
+        >
+          {soundEnabled ? '🔊 Sound On' : '🔇 Sound Off'}
+        </button>
         {renderScreen()}
       </div>
       <div className="mt-8 text-slate-400 text-xs font-bold uppercase tracking-widest flex flex-col items-center gap-2">

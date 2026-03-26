@@ -6,6 +6,7 @@ interface Props {
   state: GameState;
   onGuess: (guess: string) => void;
   onQuit: () => void;
+  onPlaySound?: (kind: 'submit' | 'error') => void;
 }
 
 const HistoryPanel: React.FC<{ title: string; history: GuessResult[]; icon: string; theme: 'indigo' | 'slate' }> = ({ title, history, icon, theme }) => {
@@ -41,7 +42,7 @@ const HistoryPanel: React.FC<{ title: string; history: GuessResult[]; icon: stri
   );
 };
 
-const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
+const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit, onPlaySound }) => {
   const [digits, setDigits] = useState<string[]>(new Array(state.digitCount).fill(''));
   const [error, setError] = useState<string | null>(null);
   const [secretVisible, setSecretVisible] = useState(false); // default hidden; toggle to reveal
@@ -54,6 +55,12 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   const secretBoxRef = useRef<HTMLDivElement>(null);
   const historyCarouselRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const hasAudioInteractionRef = useRef(false);
+  const prevTurnRef = useRef(state.currentTurn);
+  const prevSelfHistoryLenRef = useRef(state.selfGuessHistory.length);
+  const prevOpponentHistoryLenRef = useRef(state.opponentGuessHistory.length);
+  const prevPendingResultRef = useRef(state.isPendingResult);
 
   // Debug: log secret visibility and role to help diagnose guest badge issues
   useEffect(() => {
@@ -71,6 +78,113 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
   useEffect(() => {
     if (isMyTurn) inputRefs.current[0]?.focus();
   }, [isMyTurn]);
+
+  const ensureAudioContext = () => {
+    if (typeof window === 'undefined') return null;
+    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioCtx();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => undefined);
+    }
+    return audioContextRef.current;
+  };
+
+  const registerAudioInteraction = () => {
+    hasAudioInteractionRef.current = true;
+    ensureAudioContext();
+  };
+
+  const playTone = (frequency: number, duration = 0.12, type: OscillatorType = 'sine', volume = 0.05, delay = 0) => {
+    const context = ensureAudioContext();
+    if (!context || !hasAudioInteractionRef.current) return;
+    const now = context.currentTime + delay;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, now);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(volume, now + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.03);
+  };
+
+  const playSound = (kind: 'submit' | 'error' | 'myTurn' | 'opponentTurn' | 'myResult' | 'opponentResult') => {
+    if (!hasAudioInteractionRef.current) return;
+    switch (kind) {
+      case 'submit':
+        playTone(420, 0.08, 'triangle', 0.03);
+        playTone(620, 0.11, 'triangle', 0.03, 0.09);
+        break;
+      case 'error':
+        playTone(220, 0.14, 'sawtooth', 0.04);
+        playTone(160, 0.16, 'sawtooth', 0.03, 0.1);
+        break;
+      case 'myTurn':
+        playTone(523.25, 0.09, 'sine', 0.035);
+        playTone(659.25, 0.12, 'sine', 0.04, 0.08);
+        break;
+      case 'opponentTurn':
+        playTone(330, 0.08, 'sine', 0.025);
+        playTone(261.63, 0.11, 'sine', 0.02, 0.08);
+        break;
+      case 'myResult':
+        playTone(740, 0.08, 'triangle', 0.035);
+        playTone(880, 0.1, 'triangle', 0.04, 0.07);
+        break;
+      case 'opponentResult':
+        playTone(280, 0.07, 'triangle', 0.025);
+        playTone(350, 0.09, 'triangle', 0.02, 0.08);
+        break;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      audioContextRef.current?.close().catch(() => undefined);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasAudioInteractionRef.current) return;
+    const turnChanged = prevTurnRef.current !== state.currentTurn;
+    if (turnChanged && state.gameStatus === 'PLAYING') {
+      playSound(state.currentTurn === 'SELF' ? 'myTurn' : 'opponentTurn');
+    }
+    prevTurnRef.current = state.currentTurn;
+  }, [state.currentTurn, state.gameStatus]);
+
+  useEffect(() => {
+    if (!hasAudioInteractionRef.current) {
+      prevSelfHistoryLenRef.current = state.selfGuessHistory.length;
+      prevOpponentHistoryLenRef.current = state.opponentGuessHistory.length;
+      return;
+    }
+    if (state.selfGuessHistory.length > prevSelfHistoryLenRef.current) {
+      playSound('myResult');
+    }
+    if (state.opponentGuessHistory.length > prevOpponentHistoryLenRef.current) {
+      playSound('opponentResult');
+    }
+    prevSelfHistoryLenRef.current = state.selfGuessHistory.length;
+    prevOpponentHistoryLenRef.current = state.opponentGuessHistory.length;
+  }, [state.selfGuessHistory.length, state.opponentGuessHistory.length]);
+
+  useEffect(() => {
+    if (!hasAudioInteractionRef.current) {
+      prevPendingResultRef.current = state.isPendingResult;
+      return;
+    }
+    if (prevPendingResultRef.current && !state.isPendingResult && state.gameStatus === 'PLAYING') {
+      playSound(state.currentTurn === 'SELF' ? 'myTurn' : 'opponentTurn');
+    }
+    prevPendingResultRef.current = state.isPendingResult;
+  }, [state.isPendingResult, state.currentTurn, state.gameStatus]);
 
   const handleSecretMouseDown = (e: React.MouseEvent) => {
     if (secretBoxRef.current) {
@@ -154,8 +268,11 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
     const err = validateGuess(guess, state.digitCount);
     if (err) {
       setError(err);
+      playSound('error');
       return;
     }
+    registerAudioInteraction();
+    playSound('submit');
     onGuess(guess);
     setDigits(new Array(state.digitCount).fill(''));
   };
@@ -320,6 +437,7 @@ const GameScreenComp: React.FC<Props> = ({ state, onGuess, onQuit }) => {
                   value={d}
                   onChange={e => handleInputChange(idx, e.target.value)}
                   onKeyDown={e => handleKeyDown(idx, e)}
+                  onFocus={registerAudioInteraction}
                   className="w-14 h-20 text-center text-4xl font-black rounded-2xl border-4 border-slate-100 focus:border-indigo-600 outline-none transition-all text-slate-900 bg-white shadow-inner"
                 />
               ))}
